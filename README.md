@@ -18,7 +18,7 @@ node dist/index.js --help
 
 ## Human Login
 
-Human operators use SqlOS OAuth device authorization. The API must expose `/api/v1/cli/config` and the SqlOS `device_authorization_endpoint`.
+Human operators use OAuth device authorization. The API must expose `/api/v1/cli/config` and the `device_authorization_endpoint`.
 
 ```bash
 mcpstack auth login --api-url http://localhost:5150
