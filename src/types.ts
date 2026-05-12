@@ -2,7 +2,6 @@ export type OutputFormat = "table" | "json" | "yaml";
 
 export interface GlobalOptions {
   apiUrl?: string;
-  profile?: string;
   org?: string;
   json?: boolean;
   output?: OutputFormat;
@@ -13,14 +12,13 @@ export interface GlobalOptions {
   debugHttp?: boolean;
 }
 
-export interface StoredProfile {
-  name: string;
+export interface ConfigFile {
   apiUrl: string;
   orgId?: string;
-  auth?: OAuthProfileAuth | ApiKeyProfileAuth;
+  auth?: OAuthAuth | ApiKeyAuth;
 }
 
-export interface OAuthProfileAuth {
+export interface OAuthAuth {
   type: "oauth";
   clientId: string;
   tokenEndpoint: string;
@@ -29,14 +27,9 @@ export interface OAuthProfileAuth {
   expiresAt?: string;
 }
 
-export interface ApiKeyProfileAuth {
+export interface ApiKeyAuth {
   type: "api_key";
   clientId?: string;
-}
-
-export interface ConfigFile {
-  currentProfile?: string;
-  profiles: Record<string, StoredProfile>;
 }
 
 export interface CliConfigResponse {

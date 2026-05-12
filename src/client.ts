@@ -1,6 +1,6 @@
 import { fetch } from "undici";
-import { getProfile, getSecret, setSecret, upsertProfile } from "./config.js";
-import type { GlobalOptions, RequestOptions, StoredProfile, TokenResponse } from "./types.js";
+import { getSecret, loadConfig, saveConfig, setActiveOrganization, setSecret } from "./config.js";
+import type { ConfigFile, GlobalOptions, RequestOptions, TokenResponse } from "./types.js";
 
 export class McpstackHttpError extends Error {
   constructor(
@@ -14,24 +14,24 @@ export class McpstackHttpError extends Error {
 
 export class McpstackClient {
   readonly apiUrl: string;
-  readonly profile?: StoredProfile;
+  readonly config?: ConfigFile;
 
   private constructor(
     private readonly options: GlobalOptions,
     apiUrl: string,
-    profile?: StoredProfile,
+    config?: ConfigFile,
   ) {
     this.apiUrl = apiUrl.replace(/\/+$/, "");
-    this.profile = profile;
+    this.config = config;
   }
 
   static async create(options: GlobalOptions): Promise<McpstackClient> {
-    const profile = await getProfile(options.profile);
+    const config = await loadConfig();
     const apiUrl = options.apiUrl
       ?? process.env.MCPSTACK_API_URL
-      ?? profile?.apiUrl
+      ?? config?.apiUrl
       ?? "http://localhost:5150";
-    return new McpstackClient(options, apiUrl, profile);
+    return new McpstackClient(options, apiUrl, config);
   }
 
   async request<T = unknown>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
@@ -117,7 +117,7 @@ export class McpstackClient {
     const orgId = explicitOrg
       ?? this.options.org
       ?? process.env.MCPSTACK_ORG_ID
-      ?? this.profile?.orgId;
+      ?? this.config?.orgId;
     if (orgId) {
       return orgId;
     }
@@ -134,12 +134,13 @@ export class McpstackClient {
     throw new Error("Multiple organizations found. Pass --org <organization-id> or run `mcpstack org use <organization-id>`.");
   }
 
-  async setProfileOrg(orgId: string): Promise<void> {
-    if (!this.profile) {
-      throw new Error("No stored profile is active. Run `mcpstack auth login` first.");
+  async setActiveOrg(orgId: string): Promise<void> {
+    if (!this.config) {
+      await saveConfig({ apiUrl: this.apiUrl, orgId });
+      return;
     }
 
-    await upsertProfile({ ...this.profile, orgId });
+    await setActiveOrganization(orgId);
   }
 
   buildUrl(path: string, query?: Record<string, string | number | boolean | undefined>): string {
@@ -164,31 +165,31 @@ export class McpstackClient {
       return `Bearer ${apiKey}`;
     }
 
-    if (!this.profile?.auth) {
+    if (!this.config?.auth) {
       return undefined;
     }
 
-    if (this.profile.auth.type === "api_key") {
-      const storedApiKey = await getSecret(this.profile.name, "apiKey");
+    if (this.config.auth.type === "api_key") {
+      const storedApiKey = await getSecret("apiKey");
       return storedApiKey ? `Bearer ${storedApiKey}` : undefined;
     }
 
     const refreshed = await this.refreshAccessTokenIfNeeded();
-    const token = refreshed ?? await getSecret(this.profile.name, "accessToken");
+    const token = refreshed ?? await getSecret("accessToken");
     return token ? `Bearer ${token}` : undefined;
   }
 
   private async refreshAccessTokenIfNeeded(): Promise<string | undefined> {
-    if (!this.profile?.auth || this.profile.auth.type !== "oauth") {
+    if (!this.config?.auth || this.config.auth.type !== "oauth") {
       return undefined;
     }
 
-    const expiresAt = this.profile.auth.expiresAt ? Date.parse(this.profile.auth.expiresAt) : 0;
+    const expiresAt = this.config.auth.expiresAt ? Date.parse(this.config.auth.expiresAt) : 0;
     if (expiresAt > Date.now() + 60_000) {
       return undefined;
     }
 
-    const refreshToken = await getSecret(this.profile.name, "refreshToken");
+    const refreshToken = await getSecret("refreshToken");
     if (!refreshToken) {
       return undefined;
     }
@@ -196,10 +197,10 @@ export class McpstackClient {
     const body = new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      client_id: this.profile.auth.clientId,
+      client_id: this.config.auth.clientId,
     });
 
-    const response = await fetch(this.profile.auth.tokenEndpoint, {
+    const response = await fetch(this.config.auth.tokenEndpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -213,19 +214,19 @@ export class McpstackClient {
     }
 
     const token = await response.json() as TokenResponse;
-    await setSecret(this.profile.name, "accessToken", token.access_token);
+    await setSecret("accessToken", token.access_token);
     if (token.refresh_token) {
-      await setSecret(this.profile.name, "refreshToken", token.refresh_token);
+      await setSecret("refreshToken", token.refresh_token);
     }
 
     const expiresAtIso = new Date(Date.now() + (token.expires_in ?? 600) * 1000).toISOString();
-    await upsertProfile({
-      ...this.profile,
+    await saveConfig({
+      ...this.config,
       auth: {
-        ...this.profile.auth,
+        ...this.config.auth,
         expiresAt: expiresAtIso,
       },
-    }, false);
+    });
 
     return token.access_token;
   }

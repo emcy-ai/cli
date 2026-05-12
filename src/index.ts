@@ -11,7 +11,6 @@ program
   .description("Manage MCP Stack organizations, MCP servers, gateways, agents, deployments, and service accounts.")
   .version("0.1.0")
   .option("--api-url <url>", "MCP Stack API URL")
-  .option("--profile <name>", "Local profile name")
   .option("--org <organizationId>", "Organization id")
   .option("--json", "Print JSON output")
   .option("--output <format>", "Output format: table, json, yaml")

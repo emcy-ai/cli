@@ -1,4 +1,4 @@
-import { setSecret, upsertProfile, deleteProfile, getProfile, getSecret } from "./config.js";
+import { clearConfig, loadConfig, saveConfig, setSecret } from "./config.js";
 import { McpstackClient } from "./client.js";
 import { printInfo, printSuccess, printWarning } from "./output.js";
 import { z } from "zod";
@@ -37,7 +37,7 @@ const tokenResponseSchema = z.object({
   scope: z.string().optional(),
 });
 
-export async function login(options: GlobalOptions & { profileName?: string }): Promise<void> {
+export async function login(options: GlobalOptions): Promise<void> {
   const client = await McpstackClient.create(options);
   const config = cliConfigSchema.parse(
     await client.request<CliConfigResponse>("/api/v1/cli/config", { noAuth: true }),
@@ -52,11 +52,9 @@ export async function login(options: GlobalOptions & { profileName?: string }): 
   console.log(`Device code: ${device.user_code}`);
 
   const token = await pollDeviceToken(config, device, scope);
-  const profileName = options.profileName ?? options.profile ?? process.env.MCPSTACK_PROFILE ?? "default";
   const expiresAt = new Date(Date.now() + (token.expires_in ?? 600) * 1000).toISOString();
 
-  await upsertProfile({
-    name: profileName,
+  await saveConfig({
     apiUrl: config.apiUrl,
     auth: {
       type: "oauth",
@@ -67,62 +65,59 @@ export async function login(options: GlobalOptions & { profileName?: string }): 
       expiresAt,
     },
   });
-  await setSecret(profileName, "accessToken", token.access_token);
+  await setSecret("accessToken", token.access_token);
   if (token.refresh_token) {
-    await setSecret(profileName, "refreshToken", token.refresh_token);
+    await setSecret("refreshToken", token.refresh_token);
   }
 
-  printSuccess(`Signed in and saved profile '${profileName}'.`);
+  printSuccess("Signed in.");
 }
 
-export async function logout(options: GlobalOptions): Promise<void> {
-  const profile = await getProfile(options.profile);
-  if (!profile) {
-    printWarning("No active profile found.");
+export async function logout(_options: GlobalOptions): Promise<void> {
+  const config = await loadConfig();
+  if (!config) {
+    printWarning("No active login found.");
     return;
   }
 
-  await deleteProfile(profile.name);
-  printSuccess(`Deleted profile '${profile.name}'.`);
+  await clearConfig();
+  printSuccess("Signed out.");
 }
 
-export async function status(options: GlobalOptions): Promise<void> {
-  const profile = await getProfile(options.profile);
-  if (!profile) {
-    printWarning("No active profile. Run `mcpstack auth login`.");
+export async function status(_options: GlobalOptions): Promise<void> {
+  const config = await loadConfig();
+  if (!config) {
+    printWarning("No active login. Run `mcpstack auth login` or `mcpstack auth service-account login`.");
     return;
   }
 
-  console.log(`Profile: ${profile.name}`);
-  console.log(`API URL: ${profile.apiUrl}`);
-  console.log(`Organization: ${profile.orgId ?? "(not selected)"}`);
-  console.log(`Auth: ${profile.auth?.type ?? "(none)"}`);
-  if (profile.auth?.type === "oauth") {
-    console.log(`Expires: ${profile.auth.expiresAt ?? "(unknown)"}`);
+  console.log(`API URL: ${config.apiUrl}`);
+  console.log(`Organization: ${config.orgId ?? "(not selected)"}`);
+  console.log(`Auth: ${config.auth?.type ?? "(none)"}`);
+  if (config.auth?.type === "oauth") {
+    console.log(`Expires: ${config.auth.expiresAt ?? "(unknown)"}`);
   }
 }
 
-export async function serviceAccountLogin(options: GlobalOptions & { key?: string; profileName?: string }): Promise<void> {
+export async function serviceAccountLogin(options: GlobalOptions & { key?: string }): Promise<void> {
   const apiKey = options.key ?? process.env.MCPSTACK_API_KEY;
   if (!apiKey) {
     throw new Error("Provide --key <api-key> or set MCPSTACK_API_KEY.");
   }
 
   const apiUrl = options.apiUrl ?? process.env.MCPSTACK_API_URL ?? "http://localhost:5150";
-  const profileName = options.profileName ?? options.profile ?? process.env.MCPSTACK_PROFILE ?? "service-account";
   const clientId = apiKey.slice(0, apiKey.lastIndexOf("_"));
 
-  await upsertProfile({
-    name: profileName,
+  await saveConfig({
     apiUrl,
     auth: {
       type: "api_key",
       clientId: clientId || undefined,
     },
   });
-  await setSecret(profileName, "apiKey", apiKey);
+  await setSecret("apiKey", apiKey);
 
-  printSuccess(`Stored service-account profile '${profileName}'.`);
+  printSuccess("Stored service-account login.");
 }
 
 export async function serviceAccountLogout(options: GlobalOptions): Promise<void> {

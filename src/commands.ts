@@ -5,7 +5,6 @@ import { Command } from "commander";
 import { createParser } from "eventsource-parser";
 import { McpstackClient } from "./client.js";
 import { login, logout, serviceAccountLogin, serviceAccountLogout, status, whoami } from "./auth.js";
-import { deleteProfile, loadConfig, setCurrentProfile } from "./config.js";
 import { printData, printInfo, printSuccess, type TableColumn } from "./output.js";
 import type { GlobalOptions } from "./types.js";
 
@@ -57,7 +56,6 @@ const agentColumns: TableColumn<any>[] = [
 
 export function registerCommands(program: Command): void {
   registerAuthCommands(program);
-  registerProfileCommands(program);
   registerOrgCommands(program);
   registerMemberCommands(program);
   registerApiKeyCommands(program);
@@ -78,66 +76,30 @@ function registerAuthCommands(program: Command): void {
   const auth = program.command("auth").description("Authenticate the MCP Stack CLI");
 
   auth.command("login")
-    .description("Sign in with SqlOS device OAuth")
-    .option("--profile-name <name>", "Profile name to save", "default")
+    .description("Sign in with OAuth device flow")
     .action(run(async (options) => login(options)));
 
   auth.command("logout")
-    .description("Delete the active local profile")
+    .description("Delete the active local login")
     .action(run(async (options) => logout(options)));
 
   auth.command("status")
-    .description("Show the active profile")
+    .description("Show the active login")
     .action(run(async (options) => status(options)));
 
   auth.command("whoami")
     .description("Show the authenticated user or service account")
     .action(run(async (options) => printData(await whoami(options), options)));
 
-  const serviceAccount = auth.command("service-account").description("Manage service-account auth profiles");
+  const serviceAccount = auth.command("service-account").description("Manage service-account auth");
   serviceAccount.command("login")
     .description("Store a service-account API key")
     .requiredOption("--key <key>", "Service-account API key")
-    .option("--profile-name <name>", "Profile name to save", "service-account")
     .action(run(async (options) => serviceAccountLogin(options)));
 
   serviceAccount.command("logout")
-    .description("Delete the active service-account profile")
+    .description("Delete the active service-account login")
     .action(run(async (options) => serviceAccountLogout(options)));
-}
-
-function registerProfileCommands(program: Command): void {
-  const profiles = program.command("profiles").description("Manage local MCP Stack profiles");
-
-  profiles.command("list")
-    .description("List local profiles")
-    .action(run(async (options) => {
-      const config = await loadConfig();
-      const rows = Object.values(config.profiles).map((profile) => ({
-        name: profile.name,
-        current: config.currentProfile === profile.name ? "*" : "",
-        apiUrl: profile.apiUrl,
-        orgId: profile.orgId,
-        auth: profile.auth?.type,
-      }));
-      printData(rows, options);
-    }));
-
-  profiles.command("use")
-    .argument("<name>", "Profile name")
-    .description("Switch the active profile")
-    .action(run(async (options, name: string) => {
-      await setCurrentProfile(name);
-      printSuccess(`Using profile '${name}'.`);
-    }));
-
-  profiles.command("delete")
-    .argument("<name>", "Profile name")
-    .description("Delete a local profile")
-    .action(run(async (options, name: string) => {
-      await deleteProfile(name);
-      printSuccess(`Deleted profile '${name}'.`);
-    }));
 }
 
 function registerOrgCommands(program: Command): void {
@@ -151,9 +113,9 @@ function registerOrgCommands(program: Command): void {
 
   org.command("use")
     .argument("<organizationId>", "Organization id")
-    .description("Set active organization for the current profile")
+    .description("Set active organization")
     .action(runClient(async (client, _options, organizationId: string) => {
-      await client.setProfileOrg(organizationId);
+      await client.setActiveOrg(organizationId);
       printSuccess(`Using organization '${organizationId}'.`);
     }));
 
@@ -176,7 +138,7 @@ function registerOrgCommands(program: Command): void {
         body: omitUndefined({ name: options.name, slug: options.slug }),
       });
       if (options.switch !== false && created.id) {
-        await client.setProfileOrg(created.id);
+        await client.setActiveOrg(created.id);
       }
       printData(created, options);
     }));

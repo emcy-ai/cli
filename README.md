@@ -30,15 +30,14 @@ mcpstack org use <organization-id>
 
 ## Service-Account Login
 
-Automation and CI should use an MCP Stack service-account API key. The CLI accepts API keys from the environment or a stored profile.
+Automation and CI should use an MCP Stack service-account API key. You can either store one active service-account login locally or pass the key through environment variables.
 
 ```bash
 mcpstack auth service-account login \
   --api-url https://api.mcpstack.com \
-  --profile-name ci \
   --key emcy_sk_...
 
-mcpstack --profile ci servers list --org <organization-id>
+mcpstack servers list --org <organization-id>
 ```
 
 Equivalent environment-only usage:
@@ -72,7 +71,7 @@ mcpstack agents chat <agent-id> --message "Summarize production health"
 Global flags:
 
 ```text
---api-url, --profile, --org, --json, --output table|json|yaml,
+--api-url, --org, --json, --output table|json|yaml,
 --yes, --wait, --timeout, --verbose, --debug-http
 ```
 
@@ -80,7 +79,6 @@ Environment overrides:
 
 ```text
 MCPSTACK_API_URL
-MCPSTACK_PROFILE
 MCPSTACK_ORG_ID
 MCPSTACK_ACCESS_TOKEN
 MCPSTACK_API_KEY
@@ -88,4 +86,4 @@ MCPSTACK_OUTPUT
 NO_COLOR
 ```
 
-Profiles are stored at `~/.config/mcpstack/config.json`. Secrets use the OS keychain when `keytar` is available, with a `0600` local fallback.
+The active login and selected organization are stored at `~/.config/mcpstack/config.json`. Secrets use the OS keychain when `keytar` is available, with a `0600` local fallback.

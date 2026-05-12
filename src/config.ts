@@ -1,11 +1,12 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ConfigFile, StoredProfile } from "./types.js";
+import type { ConfigFile } from "./types.js";
 
 const configPath = join(homedir(), ".config", "mcpstack", "config.json");
 const fallbackSecretPath = join(homedir(), ".config", "mcpstack", "secrets.json");
 const secretService = "mcpstack";
+const secretAccountPrefix = "current";
 
 type SecretMap = Record<string, string>;
 type KeytarModule = {
@@ -16,14 +17,22 @@ type KeytarModule = {
 
 let keytarPromise: Promise<KeytarModule | null> | undefined;
 
-export async function loadConfig(): Promise<ConfigFile> {
+export async function loadConfig(): Promise<ConfigFile | undefined> {
   try {
     const raw = await readFile(configPath, "utf8");
-    const parsed = JSON.parse(raw) as ConfigFile;
-    return { ...parsed, profiles: parsed.profiles ?? {} };
+    const parsed = JSON.parse(raw) as Partial<ConfigFile>;
+    if (!parsed.apiUrl) {
+      return undefined;
+    }
+
+    return {
+      apiUrl: parsed.apiUrl,
+      orgId: parsed.orgId,
+      auth: parsed.auth,
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { profiles: {} };
+      return undefined;
     }
     throw error;
   }
@@ -34,44 +43,24 @@ export async function saveConfig(config: ConfigFile): Promise<void> {
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }
 
-export async function getProfile(name?: string): Promise<StoredProfile | undefined> {
-  const config = await loadConfig();
-  const profileName = name ?? process.env.MCPSTACK_PROFILE ?? config.currentProfile;
-  return profileName ? config.profiles[profileName] : undefined;
+export async function clearConfig(): Promise<void> {
+  await deleteSecret("accessToken");
+  await deleteSecret("refreshToken");
+  await deleteSecret("apiKey");
+  await rm(configPath, { force: true });
 }
 
-export async function upsertProfile(profile: StoredProfile, setCurrent = true): Promise<void> {
+export async function setActiveOrganization(orgId: string): Promise<void> {
   const config = await loadConfig();
-  config.profiles[profile.name] = profile;
-  if (setCurrent) {
-    config.currentProfile = profile.name;
+  if (!config) {
+    throw new Error("No active login found. Run `mcpstack auth login` or `mcpstack auth service-account login` first.");
   }
-  await saveConfig(config);
+
+  await saveConfig({ ...config, orgId });
 }
 
-export async function deleteProfile(name: string): Promise<void> {
-  const config = await loadConfig();
-  delete config.profiles[name];
-  if (config.currentProfile === name) {
-    config.currentProfile = Object.keys(config.profiles)[0];
-  }
-  await deleteSecret(name, "accessToken");
-  await deleteSecret(name, "refreshToken");
-  await deleteSecret(name, "apiKey");
-  await saveConfig(config);
-}
-
-export async function setCurrentProfile(name: string): Promise<void> {
-  const config = await loadConfig();
-  if (!config.profiles[name]) {
-    throw new Error(`Profile '${name}' does not exist.`);
-  }
-  config.currentProfile = name;
-  await saveConfig(config);
-}
-
-export async function getSecret(profile: string, key: string): Promise<string | undefined> {
-  const account = `${profile}:${key}`;
+export async function getSecret(key: string): Promise<string | undefined> {
+  const account = getSecretAccount(key);
   const keytar = await loadKeytar();
   if (keytar) {
     const value = await keytar.getPassword(secretService, account);
@@ -84,8 +73,8 @@ export async function getSecret(profile: string, key: string): Promise<string | 
   return secrets[account];
 }
 
-export async function setSecret(profile: string, key: string, value: string): Promise<void> {
-  const account = `${profile}:${key}`;
+export async function setSecret(key: string, value: string): Promise<void> {
+  const account = getSecretAccount(key);
   const keytar = await loadKeytar();
   if (keytar) {
     await keytar.setPassword(secretService, account, value);
@@ -97,8 +86,8 @@ export async function setSecret(profile: string, key: string, value: string): Pr
   await saveFallbackSecrets(secrets);
 }
 
-export async function deleteSecret(profile: string, key: string): Promise<void> {
-  const account = `${profile}:${key}`;
+export async function deleteSecret(key: string): Promise<void> {
+  const account = getSecretAccount(key);
   const keytar = await loadKeytar();
   if (keytar) {
     await keytar.deletePassword(secretService, account);
@@ -107,6 +96,25 @@ export async function deleteSecret(profile: string, key: string): Promise<void> 
   const secrets = await loadFallbackSecrets();
   delete secrets[account];
   await saveFallbackSecrets(secrets);
+}
+
+export async function removeAllLocalState(): Promise<void> {
+  await rm(configPath, { force: true });
+  await rm(fallbackSecretPath, { force: true });
+}
+
+export async function getConfigPath(): Promise<string> {
+  await mkdir(dirname(configPath), { recursive: true, mode: 0o700 });
+  try {
+    await stat(configPath);
+  } catch {
+    await writeFile(configPath, "{}\n", { mode: 0o600 });
+  }
+  return configPath;
+}
+
+function getSecretAccount(key: string): string {
+  return `${secretAccountPrefix}:${key}`;
 }
 
 async function loadKeytar(): Promise<KeytarModule | null> {
@@ -131,19 +139,4 @@ async function loadFallbackSecrets(): Promise<SecretMap> {
 async function saveFallbackSecrets(secrets: SecretMap): Promise<void> {
   await mkdir(dirname(fallbackSecretPath), { recursive: true, mode: 0o700 });
   await writeFile(fallbackSecretPath, `${JSON.stringify(secrets, null, 2)}\n`, { mode: 0o600 });
-}
-
-export async function removeAllLocalState(): Promise<void> {
-  await rm(configPath, { force: true });
-  await rm(fallbackSecretPath, { force: true });
-}
-
-export async function getConfigPath(): Promise<string> {
-  await mkdir(dirname(configPath), { recursive: true, mode: 0o700 });
-  try {
-    await stat(configPath);
-  } catch {
-    await saveConfig({ profiles: {} });
-  }
-  return configPath;
 }

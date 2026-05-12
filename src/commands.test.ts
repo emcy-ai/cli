@@ -11,9 +11,9 @@ describe("mcpstack command surface", () => {
     const program = new Command();
     registerCommands(program);
 
-    expect(commandNames(program)).toEqual(expect.arrayContaining([
+    const names = commandNames(program);
+    expect(names).toEqual(expect.arrayContaining([
       "auth",
-      "profiles",
       "org",
       "members",
       "api-keys",
@@ -25,6 +25,7 @@ describe("mcpstack command surface", () => {
       "gateways",
       "agents",
     ]));
+    expect(names).not.toContain("profiles");
   });
 
   it("keeps destructive commands behind confirmation flags", () => {
