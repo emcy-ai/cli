@@ -1,0 +1,55 @@
+{
+  "name": "@emcy/cli",
+  "version": "0.1.0",
+  "description": "MCP Stack command-line interface for managing organizations, MCP servers, gateways, agents, and deployments.",
+  "type": "module",
+  "bin": {
+    "mcpstack": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "mcpstack",
+    "emcy",
+    "mcp",
+    "cli",
+    "oauth"
+  ],
+  "author": "Emcy <hello@emcy.ai>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emcy-ai/cli.git"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.2",
+    "eventsource-parser": "^3.0.6",
+    "undici": "^6.21.3",
+    "yaml": "^2.8.1",
+    "yoctocolors": "^2.1.2",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.0"
+  },
+  "optionalDependencies": {
+    "keytar": "^7.9.0"
+  }
+}
