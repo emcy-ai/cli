@@ -27,8 +27,11 @@ program.exitOverride();
 try {
   await program.parseAsync(process.argv);
 } catch (error) {
-  if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "commander.helpDisplayed") {
-    process.exit(0);
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: string }).code;
+    if (code === "commander.helpDisplayed" || code === "commander.version") {
+      process.exit(0);
+    }
   }
 
   if (error instanceof McpstackHttpError) {

@@ -16,6 +16,20 @@ npm run build
 node dist/index.js --help
 ```
 
+## Preview Package
+
+Pull requests publish preview packages to npm with a stable dist-tag, for example `@emcy/cli@pr-12`. The workflow comments with the exact package ref.
+
+To test a CLI change inside an `emcy-saas` PR preview, add the ref to `emcy/infra/preview-packages.json` in that Emcy PR:
+
+```json
+{
+  "@emcy/cli": "@emcy/cli@pr-12"
+}
+```
+
+The Emcy preview deploy installs that package before image builds, runs a CLI smoke check, and includes the resolved npm package link in the Emcy PR preview comment.
+
 ## Human Login
 
 Human operators use OAuth device authorization. The API must expose `/api/v1/cli/config` and the `device_authorization_endpoint`.
@@ -82,8 +96,9 @@ MCPSTACK_API_URL
 MCPSTACK_ORG_ID
 MCPSTACK_ACCESS_TOKEN
 MCPSTACK_API_KEY
+MCPSTACK_DISABLE_KEYCHAIN
 MCPSTACK_OUTPUT
 NO_COLOR
 ```
 
-The active login and selected organization are stored at `~/.config/mcpstack/config.json`. Secrets use the OS keychain when `keytar` is available, with a `0600` local fallback.
+The active login and selected organization are stored at `~/.config/mcpstack/config.json`. Secrets use the OS keychain when `keytar` is available, with a `0600` local fallback. Set `MCPSTACK_DISABLE_KEYCHAIN=1` for CI or isolated E2E runs that should not touch the desktop keychain.

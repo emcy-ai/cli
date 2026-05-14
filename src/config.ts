@@ -118,10 +118,19 @@ function getSecretAccount(key: string): string {
 }
 
 async function loadKeytar(): Promise<KeytarModule | null> {
+  if (isKeychainDisabled()) {
+    return null;
+  }
+
   keytarPromise ??= import("keytar")
     .then((module) => module.default as KeytarModule)
     .catch(() => null);
   return keytarPromise;
+}
+
+function isKeychainDisabled(): boolean {
+  const configured = process.env.MCPSTACK_DISABLE_KEYCHAIN?.trim().toLowerCase();
+  return configured === "1" || configured === "true" || configured === "yes";
 }
 
 async function loadFallbackSecrets(): Promise<SecretMap> {
