@@ -8,7 +8,7 @@
 npm i -g @emcy/cli
 ```
 
-For local development from this checkout:
+For local development:
 
 ```bash
 npm install
