@@ -1,15 +1,19 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
 import { Command } from "commander";
 import { registerCommands } from "./commands.js";
 import { McpstackHttpError } from "./client.js";
 import { printError } from "./output.js";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
 
 const program = new Command();
 
 program
   .name("mcpstack")
   .description("Manage MCP Stack organizations, MCP servers, gateways, agents, deployments, and service accounts.")
-  .version("0.1.0")
+  .version(version)
   .option("--api-url <url>", "MCP Stack API URL")
   .option("--org <organizationId>", "Organization id")
   .option("--json", "Print JSON output")
