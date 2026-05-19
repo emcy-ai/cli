@@ -1,5 +1,7 @@
 import { clearConfig, loadConfig, saveConfig, setSecret } from "./config.js";
+import { DEFAULT_API_URL } from "./constants.js";
 import { McpstackClient } from "./client.js";
+import { tryOpenBrowser } from "./open-browser.js";
 import { printInfo, printSuccess, printWarning } from "./output.js";
 import { z } from "zod";
 import type {
@@ -46,8 +48,15 @@ export async function login(options: GlobalOptions): Promise<void> {
 
   const device = await startDeviceAuthorization(config, scope);
   const verificationUrl = device.verification_uri_complete ?? device.verification_uri;
-  printInfo("Open this URL to sign in:");
-  console.log(verificationUrl);
+  const openedBrowser = !options.noBrowser && await tryOpenBrowser(verificationUrl);
+
+  if (openedBrowser) {
+    printInfo("Opened your browser to sign in. Complete approval there, then return here.");
+  } else {
+    printInfo("Open this URL to sign in:");
+    console.log(verificationUrl);
+  }
+
   console.log("");
   console.log(`Device code: ${device.user_code}`);
 
@@ -105,7 +114,7 @@ export async function serviceAccountLogin(options: GlobalOptions & { key?: strin
     throw new Error("Provide --key <api-key> or set MCPSTACK_API_KEY.");
   }
 
-  const apiUrl = options.apiUrl ?? process.env.MCPSTACK_API_URL ?? "http://localhost:5150";
+  const apiUrl = options.apiUrl ?? process.env.MCPSTACK_API_URL ?? DEFAULT_API_URL;
   const clientId = apiKey.slice(0, apiKey.lastIndexOf("_"));
 
   await saveConfig({

@@ -1,4 +1,5 @@
 import { fetch } from "undici";
+import { DEFAULT_API_URL } from "./constants.js";
 import { getSecret, loadConfig, saveConfig, setActiveOrganization, setSecret } from "./config.js";
 import type { ConfigFile, GlobalOptions, RequestOptions, TokenResponse } from "./types.js";
 
@@ -30,7 +31,7 @@ export class McpstackClient {
     const apiUrl = options.apiUrl
       ?? process.env.MCPSTACK_API_URL
       ?? config?.apiUrl
-      ?? "http://localhost:5150";
+      ?? DEFAULT_API_URL;
     return new McpstackClient(options, apiUrl, config);
   }
 
@@ -60,11 +61,20 @@ export class McpstackClient {
       console.error(`${requestOptions.method ?? "GET"} ${url}`);
     }
 
-    const response = await fetch(url, {
-      method: requestOptions.method ?? "GET",
-      headers,
-      body,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: requestOptions.method ?? "GET",
+        headers,
+        body,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Could not reach MCP Stack API at ${this.apiUrl} (${detail}). `
+        + "Check the URL, network, and VPN, or pass --api-url / set MCPSTACK_API_URL.",
+      );
+    }
 
     const responseBody = requestOptions.expectText
       ? await response.text()
