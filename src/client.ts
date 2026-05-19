@@ -1,6 +1,7 @@
 import { fetch } from "undici";
 import { DEFAULT_API_URL } from "./constants.js";
-import { getSecret, loadConfig, saveConfig, setActiveOrganization, setSecret } from "./config.js";
+import { getSecret, loadConfig, saveConfig, setSecret } from "./config.js";
+import { pickDefaultOrganization, type OrganizationSummary } from "./organization.js";
 import type { ConfigFile, GlobalOptions, RequestOptions, TokenResponse } from "./types.js";
 
 export class McpstackHttpError extends Error {
@@ -123,34 +124,53 @@ export class McpstackClient {
     }
   }
 
-  async resolveOrgId(explicitOrg?: string): Promise<string> {
-    const orgId = explicitOrg
-      ?? this.options.org
-      ?? process.env.MCPSTACK_ORG_ID
-      ?? this.config?.orgId;
-    if (orgId) {
-      return orgId;
-    }
-
-    const orgs = await this.request<any[]>("/api/v1/organizations");
-    if (orgs.length === 1) {
-      return orgs[0].id ?? orgs[0].organizationId;
-    }
-
-    if (orgs.length === 0) {
+  async getDefaultOrganization(): Promise<OrganizationSummary> {
+    const orgs = await this.request<unknown[]>("/api/v1/organizations");
+    const organization = pickDefaultOrganization(orgs);
+    if (!organization) {
       throw new Error("No organizations found for the current account.");
     }
 
-    throw new Error("Multiple organizations found. Pass --org <organization-id> or run `mcpstack org use <organization-id>`.");
+    return organization;
   }
 
-  async setActiveOrg(orgId: string): Promise<void> {
-    if (!this.config) {
-      await saveConfig({ apiUrl: this.apiUrl, orgId });
+  async syncDefaultOrganization(): Promise<OrganizationSummary> {
+    const organization = await this.getDefaultOrganization();
+    await this.cacheOrganization(organization);
+    return organization;
+  }
+
+  async resolveOrgId(explicitOrg?: string): Promise<string> {
+    const override = explicitOrg
+      ?? this.options.org
+      ?? process.env.MCPSTACK_ORG_ID;
+    if (override) {
+      return override;
+    }
+
+    const organization = await this.syncDefaultOrganization();
+    return organization.id;
+  }
+
+  private async cacheOrganization(organization: OrganizationSummary): Promise<void> {
+    if (this.config?.orgId === organization.id && this.config.orgName === organization.name) {
       return;
     }
 
-    await setActiveOrganization(orgId);
+    if (!this.config) {
+      await saveConfig({
+        apiUrl: this.apiUrl,
+        orgId: organization.id,
+        orgName: organization.name,
+      });
+      return;
+    }
+
+    await saveConfig({
+      ...this.config,
+      orgId: organization.id,
+      orgName: organization.name,
+    });
   }
 
   buildUrl(path: string, query?: Record<string, string | number | boolean | undefined>): string {

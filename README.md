@@ -40,9 +40,10 @@ By default the CLI targets production (`https://api.mcpstack.com`) and opens you
 mcpstack auth login
 mcpstack auth status
 mcpstack auth whoami
-mcpstack org list
-mcpstack org use <organization-id>
+mcpstack servers list
 ```
+
+The CLI uses your **primary organization automatically** (the first organization returned by the API), matching the SaaS dashboard. You do not need to select an organization manually.
 
 Local AppHost:
 
@@ -59,7 +60,7 @@ mcpstack auth service-account login \
   --api-url https://api.mcpstack.com \
   --key emcy_sk_...
 
-mcpstack servers list --org <organization-id>
+mcpstack servers list
 ```
 
 Equivalent environment-only usage:
@@ -67,8 +68,10 @@ Equivalent environment-only usage:
 ```bash
 MCPSTACK_API_URL=https://api.mcpstack.com \
 MCPSTACK_API_KEY=emcy_sk_... \
-mcpstack servers list --org <organization-id>
+mcpstack servers list
 ```
+
+Use `--org <organization-id>` only when you need to override the default organization for a single command.
 
 ## Common Workflows
 
@@ -93,7 +96,7 @@ mcpstack agents chat <agent-id> --message "Summarize production health"
 Global flags:
 
 ```text
---api-url, --org, --json, --output table|json|yaml,
+--api-url, --org (advanced override), --json, --output table|json|yaml,
 --yes, --wait, --timeout, --verbose, --debug-http
 ```
 

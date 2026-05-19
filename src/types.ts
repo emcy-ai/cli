@@ -15,7 +15,9 @@ export interface GlobalOptions {
 
 export interface ConfigFile {
   apiUrl: string;
+  /** Cached primary organization (same as SaaS dashboard `orgs[0]`). */
   orgId?: string;
+  orgName?: string;
   auth?: OAuthAuth | ApiKeyAuth;
 }
 

@@ -79,7 +79,9 @@ export async function login(options: GlobalOptions): Promise<void> {
     await setSecret("refreshToken", token.refresh_token);
   }
 
-  printSuccess("Signed in.");
+  const authedClient = await McpstackClient.create(options);
+  const organization = await authedClient.syncDefaultOrganization();
+  printSuccess(`Signed in. Organization: ${organization.name ?? organization.id}.`);
 }
 
 export async function logout(_options: GlobalOptions): Promise<void> {
@@ -93,7 +95,7 @@ export async function logout(_options: GlobalOptions): Promise<void> {
   printSuccess("Signed out.");
 }
 
-export async function status(_options: GlobalOptions): Promise<void> {
+export async function status(options: GlobalOptions): Promise<void> {
   const config = await loadConfig();
   if (!config) {
     printWarning("No active login. Run `mcpstack auth login` or `mcpstack auth service-account login`.");
@@ -101,8 +103,24 @@ export async function status(_options: GlobalOptions): Promise<void> {
   }
 
   console.log(`API URL: ${config.apiUrl}`);
-  console.log(`Organization: ${config.orgId ?? "(not selected)"}`);
   console.log(`Auth: ${config.auth?.type ?? "(none)"}`);
+
+  try {
+    const client = await McpstackClient.create(options);
+    const organization = await client.syncDefaultOrganization();
+    console.log(`Organization: ${organization.name ?? organization.id}`);
+  } catch (error) {
+    const cached = config.orgId
+      ? (config.orgName ? `${config.orgName} (${config.orgId})` : config.orgId)
+      : "(unavailable)";
+    console.log(`Organization: ${cached}`);
+    if (error instanceof Error && config.orgId) {
+      printWarning(`Could not refresh organization: ${error.message}`);
+    } else if (error instanceof Error) {
+      printWarning(error.message);
+    }
+  }
+
   if (config.auth?.type === "oauth") {
     console.log(`Expires: ${config.auth.expiresAt ?? "(unknown)"}`);
   }
@@ -126,7 +144,9 @@ export async function serviceAccountLogin(options: GlobalOptions & { key?: strin
   });
   await setSecret("apiKey", apiKey);
 
-  printSuccess("Stored service-account login.");
+  const client = await McpstackClient.create(options);
+  const organization = await client.syncDefaultOrganization();
+  printSuccess(`Stored service-account login. Organization: ${organization.name ?? organization.id}.`);
 }
 
 export async function serviceAccountLogout(options: GlobalOptions): Promise<void> {

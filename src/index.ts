@@ -15,7 +15,7 @@ program
   .description("Manage MCP Stack organizations, MCP servers, gateways, agents, deployments, and service accounts.")
   .version(version)
   .option("--api-url <url>", "MCP Stack API URL")
-  .option("--org <organizationId>", "Organization id")
+  .option("--org <organizationId>", "Override organization id (advanced; default matches the SaaS dashboard)")
   .option("--json", "Print JSON output")
   .option("--output <format>", "Output format: table, json, yaml")
   .option("--yes", "Skip confirmation prompts")

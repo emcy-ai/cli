@@ -28,6 +28,7 @@ export async function loadConfig(): Promise<ConfigFile | undefined> {
     return {
       apiUrl: parsed.apiUrl,
       orgId: parsed.orgId,
+      orgName: parsed.orgName,
       auth: parsed.auth,
     };
   } catch (error) {

@@ -107,17 +107,9 @@ function registerOrgCommands(program: Command): void {
   const org = program.command("org").description("Manage organizations");
 
   org.command("list")
-    .description("List organizations")
+    .description("List organizations (the CLI uses your primary organization automatically, same as the dashboard)")
     .action(runClient(async (client, options) => {
       printData(await client.request("/api/v1/organizations"), options, orgColumns);
-    }));
-
-  org.command("use")
-    .argument("<organizationId>", "Organization id")
-    .description("Set active organization")
-    .action(runClient(async (client, _options, organizationId: string) => {
-      await client.setActiveOrg(organizationId);
-      printSuccess(`Using organization '${organizationId}'.`);
     }));
 
   org.command("get")
@@ -131,16 +123,13 @@ function registerOrgCommands(program: Command): void {
   org.command("create")
     .requiredOption("--name <name>", "Organization name")
     .option("--slug <slug>", "Organization slug")
-    .option("--no-switch", "Do not set the new organization as active")
     .description("Create an organization")
     .action(runClient(async (client, options) => {
       const created = await client.request<any>("/api/v1/organizations", {
         method: "POST",
         body: omitUndefined({ name: options.name, slug: options.slug }),
       });
-      if (options.switch !== false && created.id) {
-        await client.setActiveOrg(created.id);
-      }
+      await client.syncDefaultOrganization();
       printData(created, options);
     }));
 
