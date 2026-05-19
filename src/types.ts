@@ -10,6 +10,7 @@ export interface GlobalOptions {
   timeout?: string;
   verbose?: boolean;
   debugHttp?: boolean;
+  noBrowser?: boolean;
 }
 
 export interface ConfigFile {

@@ -77,6 +77,7 @@ function registerAuthCommands(program: Command): void {
 
   auth.command("login")
     .description("Sign in with OAuth device flow")
+    .option("--no-browser", "Do not open the system browser (print the URL only)")
     .action(run(async (options) => login(options)));
 
   auth.command("logout")

@@ -34,12 +34,20 @@ The Emcy preview deploy installs that package before image builds, runs a CLI sm
 
 Human operators use OAuth device authorization. The API must expose `/api/v1/cli/config` and the `device_authorization_endpoint`.
 
+By default the CLI targets production (`https://api.mcpstack.com`) and opens your browser for device login. Use `--no-browser` to print the URL only.
+
 ```bash
-mcpstack auth login --api-url http://localhost:5150
+mcpstack auth login
 mcpstack auth status
 mcpstack auth whoami
 mcpstack org list
 mcpstack org use <organization-id>
+```
+
+Local AppHost:
+
+```bash
+mcpstack auth login --api-url http://localhost:5150
 ```
 
 ## Service-Account Login
