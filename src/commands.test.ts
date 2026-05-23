@@ -19,11 +19,20 @@ describe("mcpstack command surface", () => {
       "api-keys",
       "servers",
       "tools",
-      "deploy",
-      "deployments",
-      "runtime",
+      "logs",
+      "smoke",
       "gateways",
       "agents",
+    ]));
+    expect(names).not.toEqual(expect.arrayContaining([
+      "deploy",
+      "undeploy",
+      "deployments",
+      "deployment-config",
+      "runtime",
+      "routing",
+      "host",
+      "doctor",
     ]));
     expect(names).not.toContain("profiles");
   });

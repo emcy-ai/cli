@@ -12,7 +12,7 @@ const program = new Command();
 
 program
   .name("mcpstack")
-  .description("Manage MCP Stack organizations, MCP servers, gateways, agents, deployments, and service accounts.")
+  .description("Manage MCP Stack organizations, MCP servers, gateways, agents, and service accounts.")
   .version(version)
   .option("--api-url <url>", "MCP Stack API URL")
   .option("--org <organizationId>", "Override organization id (advanced; default matches the SaaS dashboard)")

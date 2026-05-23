@@ -1,6 +1,6 @@
 # MCP Stack CLI
 
-`mcpstack` is the command-line interface for MCP Stack organizations, MCP servers, deployments, gateways, agents, members, invitations, and service-account API keys.
+`mcpstack` is the command-line interface for MCP Stack organizations, MCP servers, gateways, agents, members, invitations, and service-account API keys.
 
 ## Install
 
@@ -83,13 +83,15 @@ mcpstack api-keys create --name deploy-bot --role developer
 mcpstack api-keys list
 
 mcpstack servers create --name demo --openapi-file ./openapi.json --runtime-type hosted
-mcpstack deploy <server-id> --environment production --region westus3 --wait
-mcpstack logs stream <server-id> --region westus3
+mcpstack logs stream <server-id>
+mcpstack servers checks <server-id>
 mcpstack smoke tools-list <server-id>
 
 mcpstack agents list
 mcpstack agents chat <agent-id> --message "Summarize production health"
 ```
+
+Creating or updating a hosted server starts the managed edge publish automatically. The CLI intentionally does not expose separate deploy, undeploy, region mutation, reconcile, or rollback commands to customers; those are internal platform recovery operations.
 
 ## Configuration
 

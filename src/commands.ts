@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { Command } from "commander";
-import { createParser } from "eventsource-parser";
 import { McpstackClient } from "./client.js";
 import { login, logout, serviceAccountLogin, serviceAccountLogout, status, whoami } from "./auth.js";
 import { printData, printInfo, printSuccess, type TableColumn } from "./output.js";
@@ -61,11 +60,9 @@ export function registerCommands(program: Command): void {
   registerApiKeyCommands(program);
   registerDashboardCommands(program);
   registerHostingCommands(program);
-  registerHostCommands(program);
   registerServerCommands(program);
   registerToolCommands(program);
-  registerDeploymentCommands(program);
-  registerRuntimeCommands(program);
+  registerServerDiagnosticsCommands(program);
   registerGatewayCommands(program);
   registerGatewayPublicCommands(program);
   registerAgentCommands(program);
@@ -283,23 +280,6 @@ function registerHostingCommands(program: Command): void {
   }));
 }
 
-function registerHostCommands(program: Command): void {
-  const host = program.command("host").description("Host environment metadata");
-  host.command("environment").action(runClientWithOrg(async (client, options, orgId) => {
-    printData(await client.request(`/api/v1/organizations/${orgId}/host/environment`), options);
-  }));
-  host.command("regions")
-    .requiredOption("--environment <environment>", "Environment")
-    .action(runClientWithOrg(async (client, options, orgId) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/host/environments/${options.environment}/regions`), options);
-    }));
-  host.command("routing")
-    .requiredOption("--environment <environment>", "Environment")
-    .action(runClientWithOrg(async (client, options, orgId) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/host/environments/${options.environment}/routing`), options);
-    }));
-}
-
 function registerServerCommands(program: Command): void {
   const servers = program.command("servers").description("Manage MCP servers");
   servers.command("list").action(runClientWithOrg(async (client, options, orgId) => {
@@ -316,6 +296,7 @@ function registerServerCommands(program: Command): void {
     .option("--runtime-type <runtimeType>", "Runtime type")
     .option("--kind <kind>", "Server kind")
     .option("--description <description>", "Description")
+    .description("Create a server. Hosted servers publish to the managed edge automatically.")
     .action(runClientWithOrg(async (client, options, orgId) => {
       const spec = options.openapiFile ? await readFile(options.openapiFile, "utf8") : undefined;
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers`, {
@@ -338,6 +319,7 @@ function registerServerCommands(program: Command): void {
     .option("--status <status>")
     .option("--server-url <url>")
     .option("--runtime-type <runtimeType>")
+    .description("Update server settings. Hosted server changes publish automatically.")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}`, {
         method: "PATCH",
@@ -352,14 +334,14 @@ function registerServerCommands(program: Command): void {
     }));
   servers.command("delete")
     .argument("<serverId>")
-    .option("--delete-runtime", "Delete hosted runtime")
     .option("--environment <environment>")
     .option("--yes")
+    .description("Delete a server. Hosted runtime cleanup is handled automatically.")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       await requireConfirmation(options, `Delete MCP server '${serverId}'?`);
       await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}`, {
         method: "DELETE",
-        query: { deleteHostedRuntime: options.deleteRuntime, environment: options.environment },
+        query: { environment: options.environment },
       });
       printSuccess(`Deleted MCP server '${serverId}'.`);
     }));
@@ -400,6 +382,16 @@ function registerServerCommands(program: Command): void {
   servers.command("auth-discovery").argument("<serverId>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/auth-discovery`), options);
+    }));
+  servers.command("checks")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .description("Run hosted server DNS, TLS, routing, runtime, and tools/list checks")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/hosting-checks`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
     }));
 
   const gateway = servers.command("gateway").description("Manage server gateway attachment");
@@ -452,185 +444,13 @@ function registerToolCommands(program: Command): void {
     }));
 }
 
-function registerDeploymentCommands(program: Command): void {
-  program.command("deploy")
-    .argument("<serverId>")
-    .option("--environment <environment>")
-    .option("--region <region>")
-    .option("--cpu <cpu>")
-    .option("--memory <memory>")
-    .option("--min <minReplicas>")
-    .option("--max <maxReplicas>")
-    .option("--attach-gateway")
-    .option("--wait")
+function registerServerDiagnosticsCommands(program: Command): void {
+  const logs = program.command("logs").description("Inspect server logs");
+  logs.command("stream").argument("<serverId>").option("--environment <environment>").option("--tail <tail>", "Tail", "100")
+    .description("Print recent managed edge logs for a server")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      const result = await client.request<any>(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployments`, {
-        method: "POST",
-        body: omitUndefined({
-          environment: options.environment,
-          region: options.region,
-          cpu: options.cpu,
-          memory: options.memory,
-          minReplicas: options.min ? Number(options.min) : undefined,
-          maxReplicas: options.max ? Number(options.max) : undefined,
-          attachGateway: options.attachGateway,
-          idempotencyKey: `cli_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        }),
-      });
-      printData(result, options);
-      if (options.wait && result.operationId) {
-        await watchOperation(client, options, orgId, serverId, result.operationId);
-      }
-    }));
-  program.command("undeploy").argument("<serverId>").option("--environment <environment>").option("--yes")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      await requireConfirmation(options, `Undeploy MCP server '${serverId}'?`);
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/undeploy`, {
-        method: "POST",
-        body: omitUndefined({ environment: options.environment }),
-      }), options);
-    }));
-
-  const deployments = program.command("deployments").description("Inspect deployments");
-  deployments.command("list").argument("<serverId>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployments`, { query: { environment: options.environment } }), options);
-    }));
-  deployments.command("get").argument("<serverId>").argument("<deploymentId>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string, deploymentId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployments/${deploymentId}`), options);
-    }));
-  deployments.command("logs").argument("<serverId>").option("--environment <environment>").option("--tail <tail>", "Tail", "100")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment/logs`, { query: { environment: options.environment, tail: options.tail } }), options);
-    }));
-  deployments.command("target-logs").argument("<serverId>").argument("<deploymentId>").argument("<targetId>").option("--tail <tail>", "Tail", "100")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string, deploymentId: string, targetId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployments/${deploymentId}/targets/${targetId}/logs`, { query: { tail: options.tail } }), options);
-    }));
-
-  const operations = program.command("operations").description("Inspect deployment operations");
-  operations.command("list").argument("<serverId>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-operations`, { query: { environment: options.environment } }), options);
-    }));
-  operations.command("get").argument("<serverId>").argument("<operationId>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string, operationId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-operations/${operationId}`), options);
-    }));
-  operations.command("watch").argument("<serverId>").argument("<operationId>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string, operationId: string) => {
-      await watchOperation(client, options, orgId, serverId, operationId);
-    }));
-
-  const config = program.command("deployment-config").description("Manage deployment config");
-  config.command("get").argument("<serverId>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-config`, { query: { environment: options.environment } }), options);
-    }));
-  config.command("set").argument("<serverId>").requiredOption("--file <file>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-config`, {
-        method: "PUT",
-        body: await readJsonFile(options.file),
-      }), options);
-    }));
-  const regions = config.command("regions");
-  regions.command("add").argument("<serverId>").argument("<region>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string, region: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-config/regions`, {
-        method: "POST",
-        body: { region, environment: options.environment },
-      }), options);
-    }));
-  regions.command("update").argument("<serverId>").argument("<region>").option("--environment <environment>").option("--cpu <cpu>").option("--memory <memory>").option("--min <min>").option("--max <max>").option("--enabled <enabled>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string, region: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-config/regions/${region}`, {
-        method: "PATCH",
-        query: { environment: options.environment },
-        body: omitUndefined({
-          cpu: options.cpu,
-          memory: options.memory,
-          minReplicas: options.min ? Number(options.min) : undefined,
-          maxReplicas: options.max ? Number(options.max) : undefined,
-          enabled: options.enabled === undefined ? undefined : options.enabled === "true",
-        }),
-      }), options);
-    }));
-  regions.command("remove").argument("<serverId>").argument("<region>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string, region: string) => {
-      await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-config/regions/${region}`, {
-        method: "DELETE",
-        query: { environment: options.environment },
-      });
-      printSuccess(`Removed region '${region}'.`);
-    }));
-}
-
-function registerRuntimeCommands(program: Command): void {
-  const logs = program.command("logs").description("Stream runtime logs");
-  logs.command("stream").argument("<serverId>").requiredOption("--region <region>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      const parser = createParser({
-        onEvent(event) {
-          if (event.data) {
-            console.log(event.data);
-          }
-        },
-      });
-      await client.stream(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/runtime-targets/${options.region}/logs/stream`, (chunk) => {
-        parser.feed(chunk);
-      }, { query: { environment: options.environment } });
-    }));
-
-  const runtime = program.command("runtime").description("Runtime target operations");
-  for (const action of ["restart", "drain", "enable-routing", "rollback", "refresh-status"] as const) {
-    runtime.command(action).argument("<serverId>").requiredOption("--region <region>").option("--environment <environment>")
-      .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-        printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/runtime-targets/${options.region}/${action}`, {
-          method: "POST",
-          query: { environment: options.environment },
-        }), options);
-      }));
-  }
-  runtime.command("scale").argument("<serverId>").requiredOption("--region <region>").option("--environment <environment>").option("--cpu <cpu>").option("--memory <memory>").option("--min <min>").option("--max <max>").option("--enabled <enabled>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/runtime-targets/${options.region}/scale`, {
-        method: "POST",
-        query: { environment: options.environment },
-        body: omitUndefined({
-          cpu: options.cpu,
-          memory: options.memory,
-          minReplicas: options.min ? Number(options.min) : undefined,
-          maxReplicas: options.max ? Number(options.max) : undefined,
-          enabled: options.enabled === undefined ? undefined : options.enabled === "true",
-        }),
-      }), options);
-    }));
-  runtime.command("reconcile").argument("<serverId>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/runtime/reconcile`, {
-        method: "POST",
-        query: { environment: options.environment },
-      }), options);
-    }));
-
-  const routing = program.command("routing").description("Routing operations");
-  for (const action of ["refresh", "reconcile"] as const) {
-    routing.command(action).argument("<serverId>").option("--environment <environment>")
-      .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-        printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/routing/${action}`, {
-          method: "POST",
-          query: { environment: options.environment },
-        }), options);
-      }));
-  }
-
-  program.command("doctor").argument("<serverId>").option("--environment <environment>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-doctor`, {
-        method: "POST",
-        query: { environment: options.environment },
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment/logs`, {
+        query: { environment: options.environment, tail: options.tail },
       }), options);
     }));
 
@@ -864,25 +684,4 @@ function omitUndefined<T extends Record<string, unknown>>(value: T): T {
 
 function splitList(value: string): string[] {
   return value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
-}
-
-async function watchOperation(
-  client: McpstackClient,
-  options: GlobalOptions,
-  orgId: string,
-  serverId: string,
-  operationId: string,
-): Promise<void> {
-  const timeoutMs = Number(options.timeout ?? 600) * 1000;
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const operation = await client.request<any>(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-operations/${operationId}`);
-    printData(operation, { ...options, output: "json" });
-    const status = String(operation.status ?? "").toLowerCase();
-    if (["succeeded", "failed", "cancelled", "canceled", "completed"].includes(status)) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
-  }
-  throw new Error(`Timed out waiting for operation '${operationId}'.`);
 }
