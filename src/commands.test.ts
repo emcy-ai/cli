@@ -50,5 +50,7 @@ describe("mcpstack command surface", () => {
     expect(doctor?.options.some((option) => option.long === "--client")).toBe(true);
     expect(doctor?.options.some((option) => option.long === "--url")).toBe(true);
     expect(doctor?.options.some((option) => option.long === "--bearer")).toBe(true);
+    expect(doctor?.options.some((option) => option.long === "--json")).toBe(true);
+    expect(doctor?.options.some((option) => option.long === "--output")).toBe(true);
   });
 });

@@ -718,6 +718,8 @@ function registerGatewayPublicCommands(program: Command): void {
     .requiredOption("--client <client>", "Client profile: chatgpt-web or claude-web")
     .option("--url <url>", "Raw public MCP URL to inspect instead of a Gateway public id")
     .option("--bearer <token>", "Bearer token used to validate authenticated tools/list")
+    .option("--json", "Print JSON output")
+    .option("--output <format>", "Output format: table, json, yaml")
     .description("Validate public MCP Gateway readiness for hosted clients")
     .action(runClient(async (client, options, publicId?: string) => {
       const clientProfile = parseGatewayDoctorClient(options.client);
