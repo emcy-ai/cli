@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { createParser } from "eventsource-parser";
 import { McpstackClient } from "./client.js";
 import { login, logout, serviceAccountLogin, serviceAccountLogout, status, whoami } from "./auth.js";
+import { gatewayDoctorColumns, runGatewayDoctor, type GatewayDoctorClient } from "./gateway-doctor.js";
 import { printData, printInfo, printSuccess, type TableColumn } from "./output.js";
 import type { GlobalOptions } from "./types.js";
 
@@ -712,6 +713,34 @@ function registerGatewayPublicCommands(program: Command): void {
     };
     printData(metadata, options);
   }));
+  gatewayPublic.command("doctor")
+    .argument("[publicId]", "Gateway public id. Omit when using --url.")
+    .requiredOption("--client <client>", "Client profile: chatgpt-web or claude-web")
+    .option("--url <url>", "Raw public MCP URL to inspect instead of a Gateway public id")
+    .option("--bearer <token>", "Bearer token used to validate authenticated tools/list")
+    .option("--json", "Print JSON output")
+    .option("--output <format>", "Output format: table, json, yaml")
+    .description("Validate public MCP Gateway readiness for hosted clients")
+    .action(runClient(async (client, options, publicId?: string) => {
+      const clientProfile = parseGatewayDoctorClient(options.client);
+      const result = await runGatewayDoctor({
+        apiBaseUrl: client.apiUrl,
+        publicId,
+        url: options.url,
+        client: clientProfile,
+        bearer: options.bearer,
+      });
+
+      if (options.json || options.output === "json" || options.output === "yaml") {
+        printData(result, options);
+      } else {
+        printData(result.checks, options, gatewayDoctorColumns);
+      }
+
+      if (!result.ok) {
+        throw new Error(`Gateway public doctor failed for ${clientProfile}.`);
+      }
+    }));
   gatewayPublic.command("mcp-tools").argument("<publicId>").action(runClient(async (client, options, publicId: string) => {
     printData(await client.request(`/api/v1/gateway/${publicId}/mcp`, {
       method: "POST",
@@ -728,6 +757,14 @@ function registerGatewayPublicCommands(program: Command): void {
         noAuth: true,
       }), options);
     }));
+}
+
+function parseGatewayDoctorClient(value: string): GatewayDoctorClient {
+  if (value === "chatgpt-web" || value === "claude-web") {
+    return value;
+  }
+
+  throw new Error("Unsupported doctor client. Use --client chatgpt-web or --client claude-web.");
 }
 
 function registerAgentCommands(program: Command): void {

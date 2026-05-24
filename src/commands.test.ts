@@ -23,6 +23,7 @@ describe("mcpstack command surface", () => {
       "deployments",
       "runtime",
       "gateways",
+      "gateway-public",
       "agents",
     ]));
     expect(names).not.toContain("profiles");
@@ -36,5 +37,20 @@ describe("mcpstack command surface", () => {
     const deleteCommand = servers?.commands.find((command) => command.name() === "delete");
 
     expect(deleteCommand?.options.some((option) => option.long === "--yes")).toBe(true);
+  });
+
+  it("registers Gateway public doctor client readiness command", () => {
+    const program = new Command();
+    registerCommands(program);
+
+    const gatewayPublic = program.commands.find((command) => command.name() === "gateway-public");
+    const doctor = gatewayPublic?.commands.find((command) => command.name() === "doctor");
+
+    expect(doctor).toBeDefined();
+    expect(doctor?.options.some((option) => option.long === "--client")).toBe(true);
+    expect(doctor?.options.some((option) => option.long === "--url")).toBe(true);
+    expect(doctor?.options.some((option) => option.long === "--bearer")).toBe(true);
+    expect(doctor?.options.some((option) => option.long === "--json")).toBe(true);
+    expect(doctor?.options.some((option) => option.long === "--output")).toBe(true);
   });
 });
