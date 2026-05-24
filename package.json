@@ -5,7 +5,7 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "description": "MCP Stack command-line interface for managing organizations, MCP servers, gateways, agents, and deployments.",
+  "description": "MCP Stack command-line interface for managing organizations, MCP servers, gateways, and agents.",
   "type": "module",
   "bin": {
     "mcpstack": "./dist/index.js"
