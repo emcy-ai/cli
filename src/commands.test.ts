@@ -64,6 +64,8 @@ describe("mcpstack command surface", () => {
     expect(commandNames(customDomain!)).toEqual(expect.arrayContaining([
       "get",
       "validate",
+      "confirm-ownership",
+      "finalize",
       "set",
       "verify",
       "delete",
@@ -72,7 +74,7 @@ describe("mcpstack command surface", () => {
     expect(validateCommand?.options.some((option) => option.long === "--host")).toBe(true);
     expect(setCommand?.options.some((option) => option.long === "--hostname")).toBe(false);
     expect(setCommand?.options.some((option) => option.long === "--host")).toBe(false);
-    for (const commandName of ["get", "validate", "set", "verify", "delete"]) {
+    for (const commandName of ["get", "validate", "confirm-ownership", "finalize", "set", "verify", "delete"]) {
       const command = customDomain?.commands.find((candidate) => candidate.name() === commandName);
       expect(command?.options.some((option) => option.long === "--environment")).toBe(true);
     }

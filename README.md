@@ -88,8 +88,9 @@ mcpstack servers checks <server-id>
 mcpstack smoke tools-list <server-id>
 
 mcpstack servers custom-domain validate <server-id> --hostname mcp.example.com
+mcpstack servers custom-domain confirm-ownership <server-id>
 mcpstack servers custom-domain get <server-id>
-mcpstack servers custom-domain set <server-id>
+mcpstack servers custom-domain finalize <server-id>
 
 mcpstack agents list
 mcpstack agents chat <agent-id> --message "Summarize production health"
@@ -103,12 +104,13 @@ Hosted servers can expose one customer-owned subdomain such as `mcp.example.com`
 
 ```bash
 mcpstack servers custom-domain validate <server-id> --hostname mcp.example.com --json
+mcpstack servers custom-domain confirm-ownership <server-id> --json
 mcpstack servers custom-domain get <server-id> --json
-mcpstack servers custom-domain set <server-id> --json
+mcpstack servers custom-domain finalize <server-id> --json
 mcpstack smoke tools-list <server-id>
 ```
 
-The `validate` response includes DNS records to create at your DNS provider: a CNAME from the custom hostname to the MCP Stack Front Door endpoint and a TXT validation record for managed certificate ownership. After the records propagate, run `set` to activate routing and managed TLS. Use `verify` to recheck readiness without changing the hostname, and use `delete --yes` to remove the custom domain from the server.
+The `validate` response returns the ownership TXT record to create at your DNS provider. After it resolves, run `confirm-ownership`; MCP Stack then prepares the routing CNAME and Azure validation TXT records. Add those records, then run `finalize` to activate routing and managed TLS. `set` remains as a compatibility alias, `verify` rechecks readiness, and `delete --yes` removes the custom domain from the server.
 
 ## Configuration
 

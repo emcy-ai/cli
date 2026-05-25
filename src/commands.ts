@@ -410,7 +410,7 @@ function registerServerCommands(program: Command): void {
     .option("--hostname <hostname>", "Customer-owned hostname, for example mcp.example.com")
     .option("--host <hostname>", "Alias for --hostname")
     .option("--environment <environment>")
-    .description("Validate a hostname and return DNS records to create")
+    .description("Validate a hostname and return the ownership TXT record to create")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       const hostName = options.hostname ?? options.host;
       if (!hostName) {
@@ -422,10 +422,30 @@ function registerServerCommands(program: Command): void {
         body: omitUndefined({ hostName, environment: options.environment }),
       }), options);
     }));
+  customDomain.command("confirm-ownership")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .description("Confirm the ownership TXT record and prepare routing DNS records")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/confirm-ownership`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("finalize")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .description("Finalize routing after CNAME and Azure validation records resolve")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/finalize`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
   customDomain.command("set")
     .argument("<serverId>")
     .option("--environment <environment>")
-    .description("Set a validated custom domain after DNS records resolve")
+    .description("Compatibility alias for confirm-ownership/finalize")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/set`, {
         method: "POST",
