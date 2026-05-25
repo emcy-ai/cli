@@ -405,27 +405,37 @@ function registerServerCommands(program: Command): void {
         query: { environment: options.environment },
       }), options);
     }));
-  customDomain.command("set")
+  customDomain.command("validate")
     .argument("<serverId>")
     .option("--hostname <hostname>", "Customer-owned hostname, for example mcp.example.com")
     .option("--host <hostname>", "Alias for --hostname")
     .option("--environment <environment>")
-    .description("Attach a custom domain and return DNS verification records")
+    .description("Validate a hostname and return DNS records to create")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       const hostName = options.hostname ?? options.host;
       if (!hostName) {
         throw new Error("Missing required option --hostname <hostname>.");
       }
 
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain`, {
-        method: "PUT",
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/validate`, {
+        method: "POST",
         body: omitUndefined({ hostName, environment: options.environment }),
+      }), options);
+    }));
+  customDomain.command("set")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .description("Set a validated custom domain after DNS records resolve")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/set`, {
+        method: "POST",
+        query: { environment: options.environment },
       }), options);
     }));
   customDomain.command("verify")
     .argument("<serverId>")
     .option("--environment <environment>")
-    .description("Verify DNS and Azure Front Door readiness for a custom domain")
+    .description("Recheck DNS and Azure Front Door readiness for a custom domain")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/verify`, {
         method: "POST",

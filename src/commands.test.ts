@@ -57,18 +57,22 @@ describe("mcpstack command surface", () => {
 
     const servers = program.commands.find((command) => command.name() === "servers");
     const customDomain = servers?.commands.find((command) => command.name() === "custom-domain");
+    const validateCommand = customDomain?.commands.find((command) => command.name() === "validate");
     const setCommand = customDomain?.commands.find((command) => command.name() === "set");
 
     expect(customDomain).toBeDefined();
     expect(commandNames(customDomain!)).toEqual(expect.arrayContaining([
       "get",
+      "validate",
       "set",
       "verify",
       "delete",
     ]));
-    expect(setCommand?.options.some((option) => option.long === "--hostname")).toBe(true);
-    expect(setCommand?.options.some((option) => option.long === "--host")).toBe(true);
-    for (const commandName of ["get", "set", "verify", "delete"]) {
+    expect(validateCommand?.options.some((option) => option.long === "--hostname")).toBe(true);
+    expect(validateCommand?.options.some((option) => option.long === "--host")).toBe(true);
+    expect(setCommand?.options.some((option) => option.long === "--hostname")).toBe(false);
+    expect(setCommand?.options.some((option) => option.long === "--host")).toBe(false);
+    for (const commandName of ["get", "validate", "set", "verify", "delete"]) {
       const command = customDomain?.commands.find((candidate) => candidate.name() === commandName);
       expect(command?.options.some((option) => option.long === "--environment")).toBe(true);
     }
