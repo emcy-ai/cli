@@ -395,6 +395,67 @@ function registerServerCommands(program: Command): void {
       }), options);
     }));
 
+  const customDomain = servers.command("custom-domain").description("Manage hosted server custom domains");
+  customDomain.command("get")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .description("Show custom domain status and DNS records")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain`, {
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("validate")
+    .argument("<serverId>")
+    .option("--hostname <hostname>", "Customer-owned hostname, for example mcp.example.com")
+    .option("--host <hostname>", "Alias for --hostname")
+    .option("--environment <environment>")
+    .description("Validate a hostname and return the ownership TXT record to create")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      const hostName = options.hostname ?? options.host;
+      if (!hostName) {
+        throw new Error("Missing required option --hostname <hostname>.");
+      }
+
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/validate`, {
+        method: "POST",
+        body: omitUndefined({ hostName, environment: options.environment }),
+      }), options);
+    }));
+  customDomain.command("confirm-ownership")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .description("Confirm the ownership TXT record and prepare routing DNS records")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/confirm-ownership`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("finalize")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .description("Finalize routing after CNAME and Azure validation records resolve")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/finalize`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("delete")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .option("--yes", "Confirm removal")
+    .description("Remove a custom domain from a hosted server")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      await requireConfirmation(options, `Remove custom domain from server '${serverId}'?`);
+      await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain`, {
+        method: "DELETE",
+        query: { environment: options.environment },
+      });
+      printSuccess("Custom domain removed.");
+    }));
+
   const gateway = servers.command("gateway").description("Manage server gateway attachment");
   gateway.command("get").argument("<serverId>").action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
     printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/gateway`), options);
@@ -457,14 +518,20 @@ function registerServerDiagnosticsCommands(program: Command): void {
 
   const smoke = program.command("smoke").description("Run MCP smoke checks");
   smoke.command("tools-list").argument("<serverId>")
+    .option("--environment <environment>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools-list`, { method: "POST" }), options);
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools-list`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
     }));
   smoke.command("call").argument("<serverId>").argument("<toolName>").option("--args <json>").option("--file <file>")
+    .option("--environment <environment>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string, toolName: string) => {
       const args = options.file ? await readJsonFile(options.file) : options.args ? JSON.parse(options.args) : {};
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools/${encodeURIComponent(toolName)}/call`, {
         method: "POST",
+        query: { environment: options.environment },
         body: { arguments: args },
       }), options);
     }));

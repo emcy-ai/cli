@@ -87,11 +87,30 @@ mcpstack logs stream <server-id>
 mcpstack servers checks <server-id>
 mcpstack smoke tools-list <server-id>
 
+mcpstack servers custom-domain validate <server-id> --hostname mcp.example.com
+mcpstack servers custom-domain confirm-ownership <server-id>
+mcpstack servers custom-domain get <server-id>
+mcpstack servers custom-domain finalize <server-id>
+
 mcpstack agents list
 mcpstack agents chat <agent-id> --message "Summarize production health"
 ```
 
 Creating or updating a hosted server starts the managed edge publish automatically. The CLI intentionally does not expose separate deploy, undeploy, region mutation, reconcile, or rollback commands to customers; those are internal platform recovery operations.
+
+## Hosted Custom Domains
+
+Hosted servers can expose one customer-owned subdomain such as `mcp.example.com`. MCP Stack keeps the canonical platform MCP URL as a fallback and only prefers the custom URL after DNS, Azure Front Door managed TLS, and routing are active.
+
+```bash
+mcpstack servers custom-domain validate <server-id> --hostname mcp.example.com --json
+mcpstack servers custom-domain confirm-ownership <server-id> --json
+mcpstack servers custom-domain get <server-id> --json
+mcpstack servers custom-domain finalize <server-id> --json
+mcpstack smoke tools-list <server-id>
+```
+
+The `validate` response returns the ownership TXT record to create at your DNS provider. After it resolves, run `confirm-ownership`; MCP Stack then prepares the routing CNAME and Azure validation TXT records. Add those records, then run `finalize` to activate routing and managed TLS. `delete --yes` removes the custom domain from the server.
 
 ## Configuration
 
