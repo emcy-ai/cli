@@ -442,26 +442,6 @@ function registerServerCommands(program: Command): void {
         query: { environment: options.environment },
       }), options);
     }));
-  customDomain.command("set")
-    .argument("<serverId>")
-    .option("--environment <environment>")
-    .description("Compatibility alias for confirm-ownership/finalize")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/set`, {
-        method: "POST",
-        query: { environment: options.environment },
-      }), options);
-    }));
-  customDomain.command("verify")
-    .argument("<serverId>")
-    .option("--environment <environment>")
-    .description("Recheck DNS and Azure Front Door readiness for a custom domain")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/verify`, {
-        method: "POST",
-        query: { environment: options.environment },
-      }), options);
-    }));
   customDomain.command("delete")
     .argument("<serverId>")
     .option("--environment <environment>")

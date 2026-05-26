@@ -110,7 +110,7 @@ mcpstack servers custom-domain finalize <server-id> --json
 mcpstack smoke tools-list <server-id>
 ```
 
-The `validate` response returns the ownership TXT record to create at your DNS provider. After it resolves, run `confirm-ownership`; MCP Stack then prepares the routing CNAME and Azure validation TXT records. Add those records, then run `finalize` to activate routing and managed TLS. `set` remains as a compatibility alias, `verify` rechecks readiness, and `delete --yes` removes the custom domain from the server.
+The `validate` response returns the ownership TXT record to create at your DNS provider. After it resolves, run `confirm-ownership`; MCP Stack then prepares the routing CNAME and Azure validation TXT records. Add those records, then run `finalize` to activate routing and managed TLS. `delete --yes` removes the custom domain from the server.
 
 ## Configuration
 
