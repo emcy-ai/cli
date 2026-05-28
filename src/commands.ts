@@ -54,6 +54,25 @@ const agentColumns: TableColumn<any>[] = [
   { header: "Status", value: (item) => item.status },
 ];
 
+const agentBudgetColumns: TableColumn<any>[] = [
+  { header: "Monthly USD", value: (item) => item.monthlyBudgetUsd },
+  { header: "Default User USD", value: (item) => item.defaultUserMonthlyBudgetUsd },
+  { header: "Anonymous USD", value: (item) => item.anonymousMonthlyBudgetUsd },
+  { header: "Spent", value: (item) => item.currentMonthSpendUsd },
+  { header: "Remaining", value: (item) => item.remainingBudgetUsd },
+  { header: "Assigned Users", value: (item) => item.assignedUserCount },
+];
+
+const userBudgetColumns: TableColumn<any>[] = [
+  { header: "External User", value: (item) => item.externalUserId },
+  { header: "Assigned USD", value: (item) => item.assignedBudgetUsd },
+  { header: "Effective USD", value: (item) => item.effectiveBudgetUsd },
+  { header: "Source", value: (item) => item.budgetSource },
+  { header: "Spent", value: (item) => item.currentMonthSpendUsd },
+  { header: "Remaining", value: (item) => item.remainingBudgetUsd },
+  { header: "Status", value: (item) => item.status },
+];
+
 export function registerCommands(program: Command): void {
   registerAuthCommands(program);
   registerOrgCommands(program);
@@ -624,6 +643,66 @@ function registerAgentCommands(program: Command): void {
   agents.command("embed-usage").action(runClientWithOrg(async (client, options, orgId) => {
     printData(await client.request(`/api/v1/organizations/${orgId}/embed-usage`), options);
   }));
+
+  const budget = agents.command("budget").description("Manage per-user monthly agent budgets");
+  budget.command("set")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>", "External user id passed to the agent SDK")
+    .requiredOption("--monthly-usd <amount>", "Per-user monthly USD cap")
+    .description("Set one external user's monthly budget")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      printData(await client.request(
+        `/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`,
+        {
+          method: "PUT",
+          body: { monthlyBudgetUsd: parseUsdOption(options.monthlyUsd, "--monthly-usd") },
+        }),
+        options,
+        userBudgetColumns);
+    }));
+  budget.command("get")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>", "External user id passed to the agent SDK")
+    .description("Show one external user's assigned and effective budget")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      printData(await client.request(
+        `/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`),
+        options,
+        userBudgetColumns);
+    }));
+  budget.command("delete")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>", "External user id passed to the agent SDK")
+    .option("--yes", "Confirm deletion")
+    .description("Remove a user's explicit budget so the agent default applies")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      await requireConfirmation(options, `Remove budget for user '${options.user}' on agent '${agentId}'?`);
+      await client.request(
+        `/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`,
+        { method: "DELETE" });
+      printSuccess(`Removed budget for user '${options.user}'.`);
+    }));
+  budget.command("defaults")
+    .argument("<agentId>")
+    .requiredOption("--monthly-usd <amount>", "Agent pool monthly USD cap")
+    .option("--default-user-usd <amount>", "Default monthly USD cap for newly seen identified users")
+    .option("--anonymous-usd <amount>", "Monthly USD cap for anonymous embed usage")
+    .description("Set agent pool and default user budget policy")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/budget`, {
+        method: "PATCH",
+        body: omitUndefined({
+          monthlyBudgetUsd: parsePositiveUsdOption(options.monthlyUsd, "--monthly-usd"),
+          defaultUserBudgetUsd: options.defaultUserUsd === undefined
+            ? undefined
+            : parsePositiveUsdOption(options.defaultUserUsd, "--default-user-usd"),
+          anonymousMonthlyBudgetUsd: options.anonymousUsd === undefined
+            ? undefined
+            : parsePositiveUsdOption(options.anonymousUsd, "--anonymous-usd"),
+        }),
+      }), options, agentBudgetColumns);
+    }));
+
   agents.command("chat").argument("<agentId>").requiredOption("--message <message>")
     .action(runClient(async (client, options, agentId: string) => {
       printData(await client.request("/api/v1/chat", {
@@ -717,6 +796,37 @@ async function readJsonFile(path: string): Promise<unknown> {
 
 function omitUndefined<T extends Record<string, unknown>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
+}
+
+function parseUsdOption(value: string, flag: string): number {
+  const parsed = parseUsd(value, flag);
+  if (parsed < 0) {
+    throw new Error(`${flag} must be greater than or equal to zero.`);
+  }
+
+  return parsed;
+}
+
+function parsePositiveUsdOption(value: string, flag: string): number {
+  const parsed = parseUsd(value, flag);
+  if (parsed <= 0) {
+    throw new Error(`${flag} must be greater than zero.`);
+  }
+
+  return parsed;
+}
+
+function parseUsd(value: string, flag: string): number {
+  if (!/^\d+(?:\.\d{1,2})?$/.test(value)) {
+    throw new Error(`${flag} must be a USD amount with at most 2 decimal places.`);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${flag} must be a valid number.`);
+  }
+
+  return parsed;
 }
 
 function splitList(value: string): string[] {
