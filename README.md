@@ -88,6 +88,9 @@ mcpstack servers checks <server-id>
 mcpstack smoke tools-list <server-id>
 
 mcpstack agents list
+mcpstack agents budget defaults <agent-id> --monthly-usd 10000 --default-user-usd 5 --json
+mcpstack agents budget set <agent-id> --user customer_abc --monthly-usd 5 --json
+mcpstack agents budget get <agent-id> --user customer_abc --json
 mcpstack agents chat <agent-id> --message "Summarize production health"
 ```
 

@@ -62,4 +62,27 @@ describe("mcpstack command surface", () => {
     expect(doctor?.options.some((option) => option.long === "--json")).toBe(true);
     expect(doctor?.options.some((option) => option.long === "--output")).toBe(true);
   });
+
+  it("registers agent budget commands", () => {
+    const program = new Command();
+    registerCommands(program);
+
+    const agents = program.commands.find((command) => command.name() === "agents");
+    const budget = agents?.commands.find((command) => command.name() === "budget");
+
+    expect(budget).toBeDefined();
+    expect(commandNames(budget!)).toEqual(expect.arrayContaining([
+      "set",
+      "get",
+      "delete",
+      "defaults",
+    ]));
+
+    const setCommand = budget?.commands.find((command) => command.name() === "set");
+    expect(setCommand?.options.some((option) => option.long === "--user")).toBe(true);
+    expect(setCommand?.options.some((option) => option.long === "--monthly-usd")).toBe(true);
+
+    const defaultsCommand = budget?.commands.find((command) => command.name() === "defaults");
+    expect(defaultsCommand?.options.some((option) => option.long === "--default-user-usd")).toBe(true);
+  });
 });
