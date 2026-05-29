@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-npm i -g @emcy/cli
+npm i -g @mcpstack/cli
 ```
 
 For local development:
@@ -18,17 +18,17 @@ node dist/index.js --help
 
 ## Preview Package
 
-Pull requests publish preview packages to npm with a stable dist-tag, for example `@emcy/cli@pr-12`. The workflow comments with the exact package ref.
+Pull requests publish preview packages to npm with a stable dist-tag, for example `@mcpstack/cli@pr-12`. The workflow comments with the exact package ref.
 
-To test a CLI change inside an `emcy-saas` PR preview, add the ref to `emcy/infra/preview-packages.json` in that Emcy PR:
+To test a CLI change inside a MCP Stack SaaS PR preview, add the ref to `infra/preview-packages.json` in that PR:
 
 ```json
 {
-  "@emcy/cli": "@emcy/cli@pr-12"
+  "@mcpstack/cli": "@mcpstack/cli@pr-12"
 }
 ```
 
-The Emcy preview deploy installs that package before image builds, runs a CLI smoke check, and includes the resolved npm package link in the Emcy PR preview comment.
+The MCP Stack preview deploy installs that package before image builds, runs a CLI smoke check, and includes the resolved npm package link in the MCP Stack PR preview comment.
 
 ## Human Login
 
@@ -58,7 +58,7 @@ Automation and CI should use an MCP Stack service-account API key. You can eithe
 ```bash
 mcpstack auth service-account login \
   --api-url https://api.mcpstack.com \
-  --key emcy_sk_...
+  --key mcpstack_sk_...
 
 mcpstack servers list
 ```
@@ -67,7 +67,7 @@ Equivalent environment-only usage:
 
 ```bash
 MCPSTACK_API_URL=https://api.mcpstack.com \
-MCPSTACK_API_KEY=emcy_sk_... \
+MCPSTACK_API_KEY=mcpstack_sk_... \
 mcpstack servers list
 ```
 
