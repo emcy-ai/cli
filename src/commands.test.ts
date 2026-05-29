@@ -21,6 +21,7 @@ describe("mcpstack command surface", () => {
       "tools",
       "logs",
       "smoke",
+      "operations",
       "gateways",
       "gateway-public",
       "agents",
@@ -87,6 +88,63 @@ describe("mcpstack command surface", () => {
 
     const servers = program.commands.find((command) => command.name() === "servers");
     expect(servers?.commands.some((command) => command.name() === "openapi")).toBe(false);
+  });
+
+  it("keeps server config inspection read-only in the CLI", () => {
+    const program = new Command();
+    registerCommands(program);
+
+    const servers = program.commands.find((command) => command.name() === "servers");
+    const authConfig = servers?.commands.find((command) => command.name() === "auth-config");
+    const endpoints = servers?.commands.find((command) => command.name() === "endpoints");
+
+    expect(commandNames(authConfig!)).toEqual(["get"]);
+    expect(commandNames(endpoints!)).toEqual(["get"]);
+  });
+
+  it("exposes hosted server operations and custom-domain commands", () => {
+    const program = new Command();
+    registerCommands(program);
+
+    const operations = program.commands.find((command) => command.name() === "operations");
+    expect(commandNames(operations!)).toEqual(expect.arrayContaining(["list", "get"]));
+
+    const servers = program.commands.find((command) => command.name() === "servers");
+    const customDomain = servers?.commands.find((command) => command.name() === "custom-domain");
+    expect(commandNames(customDomain!)).toEqual(expect.arrayContaining([
+      "validate",
+      "confirm-ownership",
+      "finalize",
+      "get",
+      "delete",
+    ]));
+  });
+
+  it("lets smoke tests target an environment", () => {
+    const program = new Command();
+    registerCommands(program);
+
+    const smoke = program.commands.find((command) => command.name() === "smoke");
+    const toolsList = smoke?.commands.find((command) => command.name() === "tools-list");
+    const call = smoke?.commands.find((command) => command.name() === "call");
+
+    expect(toolsList?.options.some((option) => option.long === "--environment")).toBe(true);
+    expect(call?.options.some((option) => option.long === "--environment")).toBe(true);
+  });
+
+  it("exposes embedded user budget commands", () => {
+    const program = new Command();
+    registerCommands(program);
+
+    const agents = program.commands.find((command) => command.name() === "agents");
+    const budget = agents?.commands.find((command) => command.name() === "budget");
+
+    expect(commandNames(budget!)).toEqual(expect.arrayContaining([
+      "defaults",
+      "set",
+      "get",
+      "delete",
+    ]));
   });
 
   it("derives server identity from an OpenAPI file", () => {

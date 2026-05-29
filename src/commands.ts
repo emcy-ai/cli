@@ -69,6 +69,7 @@ export function registerCommands(program: Command): void {
   registerServerCommands(program);
   registerToolCommands(program);
   registerServerDiagnosticsCommands(program);
+  registerOperationCommands(program);
   registerGatewayCommands(program);
   registerGatewayPublicCommands(program);
   registerAgentCommands(program);
@@ -395,8 +396,8 @@ function registerServerCommands(program: Command): void {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/discover-tools`, { method: "POST" }), options);
     }));
 
-  addJsonGetSet(servers, "auth-config", "auth-config");
-  addJsonGetSet(servers, "endpoints", "endpoints");
+  addJsonGet(servers, "auth-config", "auth-config");
+  addJsonGet(servers, "endpoints", "endpoints");
 
   servers.command("auth-discovery").argument("<serverId>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
@@ -411,6 +412,59 @@ function registerServerCommands(program: Command): void {
         method: "POST",
         query: { environment: options.environment },
       }), options);
+    }));
+
+  const customDomain = servers.command("custom-domain").description("Manage hosted server custom domains");
+  customDomain.command("validate")
+    .argument("<serverId>")
+    .requiredOption("--hostname <hostname>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/validate`, {
+        method: "POST",
+        body: omitUndefined({
+          hostName: options.hostname,
+          environment: options.environment,
+        }),
+      }), options);
+    }));
+  customDomain.command("confirm-ownership")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/confirm-ownership`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("finalize")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/finalize`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("get")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain`, {
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("delete")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .option("--yes")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      await requireConfirmation(options, `Delete custom domain from server '${serverId}'?`);
+      await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain`, {
+        method: "DELETE",
+        query: { environment: options.environment },
+      });
+      printSuccess("Custom domain deleted.");
     }));
 
   const gateway = servers.command("gateway").description("Manage server gateway attachment");
@@ -474,17 +528,39 @@ function registerServerDiagnosticsCommands(program: Command): void {
     }));
 
   const smoke = program.command("smoke").description("Run MCP smoke checks");
-  smoke.command("tools-list").argument("<serverId>")
+  smoke.command("tools-list").argument("<serverId>").option("--environment <environment>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools-list`, { method: "POST" }), options);
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools-list`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
     }));
-  smoke.command("call").argument("<serverId>").argument("<toolName>").option("--args <json>").option("--file <file>")
+  smoke.command("call").argument("<serverId>").argument("<toolName>").option("--args <json>").option("--file <file>").option("--environment <environment>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string, toolName: string) => {
       const args = options.file ? await readJsonFile(options.file) : options.args ? JSON.parse(options.args) : {};
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools/${encodeURIComponent(toolName)}/call`, {
         method: "POST",
+        query: { environment: options.environment },
         body: { arguments: args },
       }), options);
+    }));
+}
+
+function registerOperationCommands(program: Command): void {
+  const operations = program.command("operations").description("Inspect hosted server lifecycle operations");
+  operations.command("list")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-operations`, {
+        query: { environment: options.environment },
+      }), options);
+    }));
+  operations.command("get")
+    .argument("<serverId>")
+    .argument("<operationId>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string, operationId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-operations/${operationId}`), options);
     }));
 }
 
@@ -650,6 +726,61 @@ function registerAgentCommands(program: Command): void {
       }), options);
     }));
 
+  const budget = agents.command("budget").description("Manage embedded user budgets");
+  budget.command("defaults")
+    .argument("<agentId>")
+    .option("--monthly-usd <amount>")
+    .option("--default-user-usd <amount>")
+    .option("--anonymous-usd <amount>")
+    .option("--currency <currency>", "Currency", "USD")
+    .option("--enforcement-mode <mode>", "Enforcement mode", "hard_block")
+    .option("--disable")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      const enabled = !options.disable;
+      if (enabled && options.monthlyUsd === undefined) {
+        throw new Error("Provide --monthly-usd, or pass --disable to remove the budget policy.");
+      }
+
+      printData(await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/budget`, {
+        method: "PATCH",
+        body: omitUndefined({
+          enabled,
+          monthlyBudgetUsd: enabled ? parseMoney(options.monthlyUsd, "--monthly-usd") : 0,
+          defaultUserBudgetUsd: parseOptionalMoney(options.defaultUserUsd, "--default-user-usd"),
+          anonymousMonthlyBudgetUsd: parseOptionalMoney(options.anonymousUsd, "--anonymous-usd"),
+          currency: options.currency,
+          enforcementMode: options.enforcementMode,
+        }),
+      }), options);
+    }));
+  budget.command("set")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>")
+    .requiredOption("--monthly-usd <amount>")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`, {
+        method: "PUT",
+        body: { monthlyBudgetUsd: parseMoney(options.monthlyUsd, "--monthly-usd") },
+      }), options);
+    }));
+  budget.command("get")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`), options);
+    }));
+  budget.command("delete")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>")
+    .option("--yes")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      await requireConfirmation(options, `Delete budget for user '${options.user}' on agent '${agentId}'?`);
+      await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`, {
+        method: "DELETE",
+      });
+      printSuccess("User budget deleted.");
+    }));
+
   const conversations = agents.command("conversations").description("Inspect agent conversations");
   conversations.command("list").argument("<agentId>").option("--cursor <cursor>").option("--page-size <pageSize>", "Page size")
     .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
@@ -676,18 +807,11 @@ function registerCompletionCommand(program: Command): void {
     }));
 }
 
-function addJsonGetSet(servers: Command, commandName: string, endpoint: string): void {
+function addJsonGet(servers: Command, commandName: string, endpoint: string): void {
   const command = servers.command(commandName);
   command.command("get").argument("<serverId>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/${endpoint}`), options);
-    }));
-  command.command("set").argument("<serverId>").requiredOption("--file <file>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/${endpoint}`, {
-        method: "PUT",
-        body: await readJsonFile(options.file),
-      }), options);
     }));
 }
 
@@ -854,4 +978,17 @@ function omitUndefined<T extends Record<string, unknown>>(value: T): T {
 
 function splitList(value: string): string[] {
   return value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function parseOptionalMoney(value: string | undefined, flag: string): number | undefined {
+  return value === undefined ? undefined : parseMoney(value, flag);
+}
+
+function parseMoney(value: string | undefined, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${flag} must be a non-negative number.`);
+  }
+
+  return parsed;
 }
