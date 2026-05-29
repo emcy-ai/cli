@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { Command } from "commander";
+import { parse as parseYaml } from "yaml";
 import { McpstackClient } from "./client.js";
 import { login, logout, serviceAccountLogin, serviceAccountLogout, status, whoami } from "./auth.js";
 import { gatewayDoctorColumns, runGatewayDoctor, type GatewayDoctorClient } from "./gateway-doctor.js";
@@ -9,6 +11,9 @@ import { printData, printInfo, printSuccess, type TableColumn } from "./output.j
 import type { GlobalOptions } from "./types.js";
 
 type CommandAction = (...args: any[]) => Promise<void>;
+
+const GeneratedOpenApiKind = "generated_openapi";
+const GeneratedWorkerRuntime = "generated_worker";
 
 const orgColumns: TableColumn<any>[] = [
   { header: "ID", value: (item) => item.id },
@@ -64,6 +69,7 @@ export function registerCommands(program: Command): void {
   registerServerCommands(program);
   registerToolCommands(program);
   registerServerDiagnosticsCommands(program);
+  registerOperationCommands(program);
   registerGatewayCommands(program);
   registerGatewayPublicCommands(program);
   registerAgentCommands(program);
@@ -290,7 +296,7 @@ function registerServerCommands(program: Command): void {
     printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}`), options);
   }));
   servers.command("create")
-    .requiredOption("--name <name>", "Server name")
+    .option("--name <name>", "Server name. Defaults to info.title from --openapi-file when present.")
     .option("--slug <slug>", "Server slug")
     .option("--openapi-url <url>", "OpenAPI URL")
     .option("--openapi-file <file>", "OpenAPI JSON/YAML file")
@@ -299,17 +305,28 @@ function registerServerCommands(program: Command): void {
     .option("--description <description>", "Description")
     .description("Create a server. Hosted servers publish to the managed edge automatically.")
     .action(runClientWithOrg(async (client, options, orgId) => {
-      const spec = options.openapiFile ? await readFile(options.openapiFile, "utf8") : undefined;
+      assertSingleOpenApiSource(options.openapiFile, options.openapiUrl, "servers create");
+
+      const specFile = options.openapiFile ? await readOpenApiSpecFile(options.openapiFile) : undefined;
+      const openApiName = specFile?.inferredName ?? (options.openapiUrl ? inferNameFromPath(options.openapiUrl) : undefined);
+      const name = normalizeNonEmpty(options.name) ?? openApiName;
+      if (!name) {
+        throw new Error("--name is required unless --openapi-file is provided.");
+      }
+
+      const hasOpenApiSource = Boolean(specFile || options.openapiUrl);
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers`, {
         method: "POST",
         body: omitUndefined({
-          name: options.name,
-          slug: options.slug,
-          kind: options.kind,
+          name,
+          slug: options.slug ?? slugifyServerName(name),
+          kind: options.kind ?? (hasOpenApiSource ? GeneratedOpenApiKind : undefined),
           description: options.description,
-          runtimeType: options.runtimeType,
+          runtimeType: options.runtimeType ?? (hasOpenApiSource ? GeneratedWorkerRuntime : undefined),
           openApiSpecUrl: options.openapiUrl,
-          openApiSpecJson: spec,
+          openApiSpecJson: specFile?.content,
+          openApiSpecSource: specFile ? "upload" : options.openapiUrl ? "url" : undefined,
+          openApiSpecFileName: specFile ? specFile.fileName : options.openapiUrl ? null : undefined,
         }),
       }), options);
     }));
@@ -320,17 +337,33 @@ function registerServerCommands(program: Command): void {
     .option("--status <status>")
     .option("--server-url <url>")
     .option("--runtime-type <runtimeType>")
+    .option("--openapi-url <url>", "Replace the server OpenAPI source with a URL")
+    .option("--openapi-file <file>", "Replace the server OpenAPI source with a local JSON/YAML file")
     .description("Update server settings. Hosted server changes publish automatically.")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      assertSingleOpenApiSource(options.openapiFile, options.openapiUrl, "servers update");
+
+      const serverPatch = omitUndefined({
+        name: options.name,
+        description: options.description,
+        status: options.status,
+        serverUrl: options.serverUrl,
+        runtimeType: options.runtimeType,
+      });
+      const hasServerPatch = Object.keys(serverPatch).length > 0;
+      const hasOpenApiSource = Boolean(options.openapiFile || options.openapiUrl);
+
+      if (!hasServerPatch && !hasOpenApiSource) {
+        throw new Error("Provide at least one update option.");
+      }
+
+      const specFile = options.openapiFile ? await readOpenApiSpecFile(options.openapiFile) : undefined;
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}`, {
         method: "PATCH",
-        body: omitUndefined({
-          name: options.name,
-          description: options.description,
-          status: options.status,
-          serverUrl: options.serverUrl,
-          runtimeType: options.runtimeType,
-        }),
+        body: {
+          ...serverPatch,
+          ...buildOpenApiSpecRequestBody(specFile, options.openapiUrl),
+        },
       }), options);
     }));
   servers.command("delete")
@@ -358,27 +391,13 @@ function registerServerCommands(program: Command): void {
     printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/config`), options);
   }));
 
-  const openapi = servers.command("openapi").description("Manage server OpenAPI config");
-  openapi.command("set").argument("<serverId>").option("--url <url>").option("--file <file>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      const spec = options.file ? await readFile(options.file, "utf8") : undefined;
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/openapi`, {
-        method: "POST",
-        body: omitUndefined({ openApiSpecUrl: options.url, openApiSpecJson: spec }),
-      }), options);
-    }));
-  openapi.command("refresh").argument("<serverId>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/openapi/refresh`, { method: "POST" }), options);
-    }));
-
   servers.command("discover-tools").argument("<serverId>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/discover-tools`, { method: "POST" }), options);
     }));
 
-  addJsonGetSet(servers, "auth-config", "auth-config");
-  addJsonGetSet(servers, "endpoints", "endpoints");
+  addJsonGet(servers, "auth-config", "auth-config");
+  addJsonGet(servers, "endpoints", "endpoints");
 
   servers.command("auth-discovery").argument("<serverId>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
@@ -393,6 +412,59 @@ function registerServerCommands(program: Command): void {
         method: "POST",
         query: { environment: options.environment },
       }), options);
+    }));
+
+  const customDomain = servers.command("custom-domain").description("Manage hosted server custom domains");
+  customDomain.command("validate")
+    .argument("<serverId>")
+    .requiredOption("--hostname <hostname>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/validate`, {
+        method: "POST",
+        body: omitUndefined({
+          hostName: options.hostname,
+          environment: options.environment,
+        }),
+      }), options);
+    }));
+  customDomain.command("confirm-ownership")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/confirm-ownership`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("finalize")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain/finalize`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("get")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain`, {
+        query: { environment: options.environment },
+      }), options);
+    }));
+  customDomain.command("delete")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .option("--yes")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      await requireConfirmation(options, `Delete custom domain from server '${serverId}'?`);
+      await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/custom-domain`, {
+        method: "DELETE",
+        query: { environment: options.environment },
+      });
+      printSuccess("Custom domain deleted.");
     }));
 
   const gateway = servers.command("gateway").description("Manage server gateway attachment");
@@ -456,17 +528,39 @@ function registerServerDiagnosticsCommands(program: Command): void {
     }));
 
   const smoke = program.command("smoke").description("Run MCP smoke checks");
-  smoke.command("tools-list").argument("<serverId>")
+  smoke.command("tools-list").argument("<serverId>").option("--environment <environment>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools-list`, { method: "POST" }), options);
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools-list`, {
+        method: "POST",
+        query: { environment: options.environment },
+      }), options);
     }));
-  smoke.command("call").argument("<serverId>").argument("<toolName>").option("--args <json>").option("--file <file>")
+  smoke.command("call").argument("<serverId>").argument("<toolName>").option("--args <json>").option("--file <file>").option("--environment <environment>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string, toolName: string) => {
       const args = options.file ? await readJsonFile(options.file) : options.args ? JSON.parse(options.args) : {};
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/mcp-smoke/tools/${encodeURIComponent(toolName)}/call`, {
         method: "POST",
+        query: { environment: options.environment },
         body: { arguments: args },
       }), options);
+    }));
+}
+
+function registerOperationCommands(program: Command): void {
+  const operations = program.command("operations").description("Inspect hosted server lifecycle operations");
+  operations.command("list")
+    .argument("<serverId>")
+    .option("--environment <environment>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-operations`, {
+        query: { environment: options.environment },
+      }), options);
+    }));
+  operations.command("get")
+    .argument("<serverId>")
+    .argument("<operationId>")
+    .action(runClientWithOrg(async (client, options, orgId, serverId: string, operationId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/deployment-operations/${operationId}`), options);
     }));
 }
 
@@ -632,6 +726,61 @@ function registerAgentCommands(program: Command): void {
       }), options);
     }));
 
+  const budget = agents.command("budget").description("Manage embedded user budgets");
+  budget.command("defaults")
+    .argument("<agentId>")
+    .option("--monthly-usd <amount>")
+    .option("--default-user-usd <amount>")
+    .option("--anonymous-usd <amount>")
+    .option("--currency <currency>", "Currency", "USD")
+    .option("--enforcement-mode <mode>", "Enforcement mode", "hard_block")
+    .option("--disable")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      const enabled = !options.disable;
+      if (enabled && options.monthlyUsd === undefined) {
+        throw new Error("Provide --monthly-usd, or pass --disable to remove the budget policy.");
+      }
+
+      printData(await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/budget`, {
+        method: "PATCH",
+        body: omitUndefined({
+          enabled,
+          monthlyBudgetUsd: enabled ? parseMoney(options.monthlyUsd, "--monthly-usd") : 0,
+          defaultUserBudgetUsd: parseOptionalMoney(options.defaultUserUsd, "--default-user-usd"),
+          anonymousMonthlyBudgetUsd: parseOptionalMoney(options.anonymousUsd, "--anonymous-usd"),
+          currency: options.currency,
+          enforcementMode: options.enforcementMode,
+        }),
+      }), options);
+    }));
+  budget.command("set")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>")
+    .requiredOption("--monthly-usd <amount>")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`, {
+        method: "PUT",
+        body: { monthlyBudgetUsd: parseMoney(options.monthlyUsd, "--monthly-usd") },
+      }), options);
+    }));
+  budget.command("get")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      printData(await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`), options);
+    }));
+  budget.command("delete")
+    .argument("<agentId>")
+    .requiredOption("--user <externalUserId>")
+    .option("--yes")
+    .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
+      await requireConfirmation(options, `Delete budget for user '${options.user}' on agent '${agentId}'?`);
+      await client.request(`/api/v1/organizations/${orgId}/agents/${agentId}/external-users/${encodeURIComponent(options.user)}/budget`, {
+        method: "DELETE",
+      });
+      printSuccess("User budget deleted.");
+    }));
+
   const conversations = agents.command("conversations").description("Inspect agent conversations");
   conversations.command("list").argument("<agentId>").option("--cursor <cursor>").option("--page-size <pageSize>", "Page size")
     .action(runClientWithOrg(async (client, options, orgId, agentId: string) => {
@@ -658,18 +807,11 @@ function registerCompletionCommand(program: Command): void {
     }));
 }
 
-function addJsonGetSet(servers: Command, commandName: string, endpoint: string): void {
+function addJsonGet(servers: Command, commandName: string, endpoint: string): void {
   const command = servers.command(commandName);
   command.command("get").argument("<serverId>")
     .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
       printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/${endpoint}`), options);
-    }));
-  command.command("set").argument("<serverId>").requiredOption("--file <file>")
-    .action(runClientWithOrg(async (client, options, orgId, serverId: string) => {
-      printData(await client.request(`/api/v1/organizations/${orgId}/mcp-servers/${serverId}/${endpoint}`, {
-        method: "PUT",
-        body: await readJsonFile(options.file),
-      }), options);
     }));
 }
 
@@ -715,10 +857,138 @@ async function readJsonFile(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
+type OpenApiSpecFile = {
+  content: string;
+  fileName: string;
+  inferredName: string;
+};
+
+async function readOpenApiSpecFile(path: string): Promise<OpenApiSpecFile> {
+  const content = await readFile(path, "utf8");
+  return {
+    content,
+    fileName: basename(path),
+    inferredName: inferOpenApiServerName(content, path),
+  };
+}
+
+export function inferOpenApiServerName(content: string, path: string): string {
+  try {
+    const parsed = parseYaml(content) as unknown;
+    const title = readOpenApiInfoTitle(parsed);
+    if (title) {
+      return title;
+    }
+  } catch {
+    // Fall back to the filename. The API will still validate and report malformed specs.
+  }
+
+  return inferNameFromPath(path);
+}
+
+function readOpenApiInfoTitle(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || !("info" in value)) {
+    return undefined;
+  }
+
+  const info = (value as { info?: unknown }).info;
+  if (!info || typeof info !== "object" || !("title" in info)) {
+    return undefined;
+  }
+
+  const title = (info as { title?: unknown }).title;
+  return typeof title === "string" ? normalizeNonEmpty(title) : undefined;
+}
+
+export function slugifyServerName(value: string): string {
+  const slug = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .replace(/-+$/g, "");
+
+  return slug || "mcp-server";
+}
+
+function inferNameFromPath(path: string): string {
+  let name = path;
+  try {
+    name = new URL(path).pathname;
+  } catch {
+    // Not a URL; treat as a local path.
+  }
+
+  const fileName = basename(name) || name;
+  const extension = extname(fileName);
+  const stem = extension ? fileName.slice(0, -extension.length) : fileName;
+  const words = stem
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return "OpenAPI Server";
+  }
+
+  return words.map(formatTitleWord).join(" ");
+}
+
+function formatTitleWord(word: string): string {
+  if (/^api$/i.test(word)) {
+    return "API";
+  }
+  if (/^openapi$/i.test(word)) {
+    return "OpenAPI";
+  }
+  if (/^mcp$/i.test(word)) {
+    return "MCP";
+  }
+
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+}
+
+function buildOpenApiSpecRequestBody(specFile?: OpenApiSpecFile, url?: string): Record<string, unknown> {
+  return omitUndefined({
+    openApiSpecUrl: url,
+    openApiSpecJson: specFile?.content,
+    openApiSpecSource: specFile ? "upload" : url ? "url" : undefined,
+    openApiSpecFileName: specFile ? specFile.fileName : url ? null : undefined,
+  });
+}
+
+function assertSingleOpenApiSource(file: string | undefined, url: string | undefined, commandName: string): void {
+  if (file && url) {
+    throw new Error(`Use either --file/--openapi-file or --url/--openapi-url with ${commandName}, not both.`);
+  }
+}
+
+function normalizeNonEmpty(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
 function omitUndefined<T extends Record<string, unknown>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 }
 
 function splitList(value: string): string[] {
   return value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function parseOptionalMoney(value: string | undefined, flag: string): number | undefined {
+  return value === undefined ? undefined : parseMoney(value, flag);
+}
+
+function parseMoney(value: string | undefined, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${flag} must be a non-negative number.`);
+  }
+
+  return parsed;
 }
