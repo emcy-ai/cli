@@ -1,6 +1,6 @@
 {
-  "name": "@emcy/cli",
-  "version": "0.1.4",
+  "name": "@mcpstack/cli",
+  "version": "1.0.0",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
@@ -24,12 +24,11 @@
   },
   "keywords": [
     "mcpstack",
-    "emcy",
     "mcp",
     "cli",
     "oauth"
   ],
-  "author": "Emcy <hello@emcy.ai>",
+  "author": "MCP Stack <hello@mcpstack.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
