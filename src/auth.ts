@@ -48,7 +48,8 @@ export async function login(options: GlobalOptions): Promise<void> {
 
   const device = await startDeviceAuthorization(config, scope);
   const verificationUrl = device.verification_uri_complete ?? device.verification_uri;
-  const openedBrowser = !options.noBrowser && await tryOpenBrowser(verificationUrl);
+  const noBrowser = options.noBrowser || (options as GlobalOptions & { browser?: boolean }).browser === false;
+  const openedBrowser = !noBrowser && await tryOpenBrowser(verificationUrl);
 
   if (openedBrowser) {
     printInfo("Opened your browser to sign in. Complete approval there, then return here.");

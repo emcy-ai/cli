@@ -82,16 +82,22 @@ mcpstack members invitations list
 mcpstack api-keys create --name deploy-bot --role developer
 mcpstack api-keys list
 
-mcpstack servers create --name demo --openapi-file ./openapi.json --runtime-type hosted
+mcpstack servers create --openapi-file ./openapi.yaml
+mcpstack servers get <server-id>
+mcpstack servers update <server-id> --name "Production API"
+mcpstack servers update <server-id> --openapi-file ./openapi.yaml
 mcpstack logs stream <server-id>
 mcpstack servers checks <server-id>
 mcpstack smoke tools-list <server-id>
+mcpstack servers delete <server-id> --yes
 
 mcpstack agents list
 mcpstack agents chat <agent-id> --message "Summarize production health"
 ```
 
-Creating or updating a hosted server starts the managed edge publish automatically. The CLI intentionally does not expose separate deploy, undeploy, region mutation, reconcile, or rollback commands to customers; those are internal platform recovery operations.
+Creating or updating a hosted server starts the managed edge publish automatically. The CLI intentionally does not expose separate deploy, undeploy, region mutation, reconcile, or rollback commands to customers; those are internal platform operations.
+
+When creating or updating from `--openapi-file`, the CLI reads the local JSON/YAML file, sends the spec contents to MCP Stack, and records the source as an upload. The file does not need to be publicly reachable. Use `servers update --openapi-file` whenever the local spec changes.
 
 ## Configuration
 
