@@ -8,7 +8,7 @@
   "description": "MCP Stack command-line interface for managing organizations, MCP servers, gateways, and agents.",
   "type": "module",
   "bin": {
-    "mcpstack": "./dist/index.js"
+    "mcpstack": "dist/index.js"
   },
   "files": [
     "dist",
@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/emcy-ai/cli.git"
+    "url": "git+https://github.com/emcy-ai/mcpstack-cli.git"
   },
   "engines": {
     "node": ">=20.0.0"
